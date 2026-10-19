@@ -1,0 +1,23 @@
+# Allow-list: everything is ignored unless listed below, so tool outputs can never be committed.
+*
+!*/
+!.gitignore
+!README.md
+!Makefile
+!env.csh
+!config/*.example.*
+!const/*.sdc
+!rtl/*.v
+!tb/*.v
+!sim/run_*.csh
+!dc/dc.tcl
+!fm/fm.tcl
+!icc2/icc2.tcl
+!rcx/run_starrc.csh
+!sta/pt.tcl
+!verif/run_*.csh
+!tools/*.py
+!LICENSE
+!docs/*
+!docs/img/*.png
+!docs/.nojekyll

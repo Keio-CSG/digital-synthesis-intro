@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>07 signoff STA｜デジタル論理合成入門</title><meta name="description" content="実配線の寄生込みで、setup と hold をそれぞれ最悪のコーナーで確認する。">
+<link rel="stylesheet" href="style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html">02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html" class=cur>07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a></nav>
+<main><h1>07 signoff STA</h1><p class="summary">実配線の寄生込みで、setup と hold をそれぞれ最悪のコーナーで確認する。</p><section class="intro"><h2>はじめに: signoff STA とは、setup と hold とは</h2>
+<p><strong>STA</strong>（静的タイミング解析）は、シミュレーションを行わずに、<strong>回路内のすべての経路について「間に合うか」を計算</strong>する手法です。入力を考える必要がなく、漏れがありません。</p>
+<p>レジスタからレジスタへのデータは、<strong>クロックの1周期のあいだに</strong>届かなければなりません。確認する条件は2つあります。</p>
+<ul><li><strong>setup（セットアップ）</strong>: 次のクロックが来る<em>前</em>に、データが届いているか。遅すぎるとだめ。</li>
+<li><strong>hold（ホールド）</strong>: クロックが来た<em>後</em>、データが変わるのが早すぎないか。早すぎるとだめ。</li></ul>
+<p><strong>slack（スラック）</strong>は「余裕」のことで、<strong>0以上なら合格</strong>、マイナスなら違反です。signoff STA は、配線の抵抗・容量（SPEF）まで含めた<strong>最終判定</strong>です。</p></section><section class="run"><h2>実行方法</h2>
+<table>
+<tr><th>いちばん簡単</th><td><code>make sta</code>（リポジトリの最上位で実行）</td></tr>
+<tr><th>直接実行</th><td><code>cd sta; env MODE=setup pt_shell -f pt.tcl   と   env MODE=hold pt_shell -f pt.tcl</code></td></tr>
+<tr><th>入力</th><td><code>icc2/MAC4.icc2.nopg.v</code>、<code>rcx/MAC4.spef</code>、<code>const/MAC4.sdc</code>、セルのタイミングライブラリ（config で指定）</td></tr>
+<tr><th>出力</th><td><code>sta/setup.*.log</code>、<code>sta/hold.*.log</code>、<code>MAC4.setup.sdf</code>、<code>MAC4.hold.sdf</code>（次章のシミュレーションで使う遅延ファイル）</td></tr>
+<tr><th>成功の確認</th><td><code>grep "slack (" sta/setup.max.log | head -1 ／ grep "slack (" sta/hold.min.log | head -1   →   どちらも slack (MET)</code></td></tr>
+</table><ul><li><code>make pnr rcx</code> が済んでいる必要があります。</li><li>setup と hold を別々に（別のコーナーで）実行するため、2回走ります。</li></ul></section>
+<p>ツールは <strong>Synopsys PrimeTime</strong>（<code>pt_shell</code>）です。ここが<strong>最終判定</strong>です。合成・ICC2 のタイミングは途中経過で、テープアウト可否は signoff の STA（静的タイミング解析）で決まります。</p>
+<figure class="code"><figcaption>sta/pt.tcl</figcaption><pre><code># PrimeTime signoff STA.  Run in sta/:  env MODE=setup|hold pt_shell -f pt.tcl
+#   setup : slow corner (late data, early clock)    -&gt; can the logic finish in one cycle?
+#   hold  : fast corner (early data, late clock)    -&gt; does data change too soon after the edge?
+set mode [expr {[info exists env(MODE)] ? $env(MODE) : &quot;setup&quot;}]
+set db   [expr {$mode eq &quot;setup&quot; ? $env(STD_DB_WC) : $env(STD_DB_BC)}]
+set designname MAC4
+
+set link_path [list &quot;*&quot; $db]
+set target_library [list $db]
+read_verilog ../icc2/$designname.icc2.nopg.v
+current_design $designname
+link_design
+
+# same constraints as synthesis and P&amp;R
+source ../const/$designname.sdc
+
+# real wire RC from StarRC
+read_parasitics ../rcx/$designname.spef
+report_annotated_parasitics -check &gt; $mode.annotated.log
+
+# clock is now propagated through the real tree (DC/ICC2 pre-CTS used an ideal clock)
+set_propagated_clock [all_clocks]
+
+update_timing -full
+check_timing -verbose                         &gt; $mode.check_timing.log
+report_global_timing                          &gt; $mode.global.log
+report_constraint -all_violators              &gt; $mode.violators.log
+report_timing -delay_type max -max_paths 5 -slack_lesser_than 1000 -nosplit -input_pins &gt; $mode.max.log
+report_timing -delay_type min -max_paths 5 -slack_lesser_than 1000 -nosplit -input_pins &gt; $mode.min.log
+report_clock_timing -type skew -nosplit &gt; $mode.skew.log
+report_analysis_coverage                      &gt; $mode.coverage.log
+
+# write SDF for gate-level simulation
+write_sdf -significant_digits 4 $designname.$mode.sdf
+quit</code></pre></figure>
+<h2>なぜ2回走らせるのか</h2>
+<table>
+<tr><th>チェック</th><th>最悪になる条件</th><th>使うコーナー</th></tr>
+<tr><td><strong>setup</strong>（データが遅すぎないか）</td><td>データは遅く、クロックは早く</td><td><strong>遅いコーナー</strong>（低電圧・高温）</td></tr>
+<tr><td><strong>hold</strong>（データが早すぎないか）</td><td>データは早く、クロックは遅く</td><td><strong>速いコーナー</strong>（高電圧・低温）</td></tr>
+</table>
+<p>同じ回路でも、動作条件が変わると遅延が大きく変わります。<code>MODE=setup</code> と <code>MODE=hold</code> で別々に実行します。</p>
+<h2>スクリプトの要点</h2>
+<ul>
+<li><code>read_verilog</code> + <code>link_design</code>: ICC2 が出したネットリスト。</li>
+<li><code>source const/MAC4.sdc</code>: <strong>合成と同じ SDC</strong>。制約が途中で変わっていないこと。</li>
+<li><code>read_parasitics</code>: SPEF を読む。</li>
+<li><code>set_propagated_clock</code>: クロックを<strong>実際の経路</strong>で伝搬させる。</li>
+<li><code>check_timing</code>: 制約の抜け（入力に遅延が無い・クロックが来ないレジスタなど）。<strong>slack が良くても、ここに警告があれば信用できません</strong>。</li></ul>
+<h2>結果の読み方</h2>
+<figure class="code"><figcaption>この教材の参考値（コーナーを併記）</figcaption><pre><code>setup (遅いコーナー):  report_timing -delay_type max  → slack +0.05 ns  (MET)
+hold  (速いコーナー):  report_timing -delay_type min  → slack +0.01 ns  (MET)</code></pre></figure>
+<ul><li><code>*.max.log</code> / <code>*.min.log</code>: 最悪パスの詳細（<code>-input_pins</code> でセルごとの遅延が見える）。</li>
+<li><code>*.violators.log</code>: 違反の一覧。空であること。</li>
+<li><code>*.skew.log</code>: クロックスキュー。</li>
+<li><code>*.annotated.log</code>: 寄生が付いたネットの割合。</li>
+<li><code>*.coverage.log</code>: 解析されたパスの網羅度。</li></ul>
+<aside class="note warn"><strong>hold の slack が小さいのは普通</strong><div>hold は周期に依存せず、クロックを遅くしても改善しません。修正は<strong>遅延セルの挿入</strong>しかありません。ICC2 の CTS 段階で直す理由です。</div></aside>
+<h2>違反したときの打ち手</h2>
+<table>
+<tr><th>違反</th><th>対策</th></tr>
+<tr><td>setup</td><td>周期を延ばす / 論理を浅くする（パイプライン）/ ドライブの強いセルへ / 配置を近づける</td></tr>
+<tr><td>hold</td><td>遅延セル挿入 / クロックスキューを調整</td></tr>
+</table>
+<h2>演習</h2>
+<ol><li><code>CLK_PERIOD</code> を 1.0 にして最初から流す（<code>make clean all</code>）。どの段で最初に負の slack が出るか。</li>
+<li><code>set_propagated_clock</code> の行を消して結果を比べる。何が変わるか、なぜか。</li></ol>
+
+<div class="pager"><a href="06-extraction.html"><span>← 前へ</span>06 寄生抽出</a><a href="08-gls.html" style="text-align:right"><span>次へ →</span>08 ゲートレベルシミュレーション</a></div>
+<footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>

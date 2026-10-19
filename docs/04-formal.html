@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>04 等価性検証｜デジタル論理合成入門</title><meta name="description" content="合成後のネットリストが、RTLと論理的に等価であることを証明する。">
+<link rel="stylesheet" href="style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html">02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html" class=cur>04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a></nav>
+<main><h1>04 等価性検証</h1><p class="summary">合成後のネットリストが、RTLと論理的に等価であることを証明する。</p><section class="intro"><h2>はじめに: 等価性検証とは</h2>
+<p>論理合成ツールは、回路を書き換えて最適化します。もしその過程で<strong>機能が変わってしまったら</strong>、後の工程で見つけるのはとても大変です。</p>
+<p><strong>等価性検証</strong>は、書き換え前（RTL）と書き換え後（ネットリスト）が<strong>どんな入力でも同じ出力を返す</strong>ことを、数学的に確認します。シミュレーションが「入れた例では合っていた」ことしか言えないのに対し、「全部の場合で合っている」と言えるのが違いです。</p></section><section class="run"><h2>実行方法</h2>
+<table>
+<tr><th>いちばん簡単</th><td><code>make fm</code>（リポジトリの最上位で実行）</td></tr>
+<tr><th>直接実行</th><td><code>cd fm; fm_shell -f fm.tcl >& fm_run.log</code></td></tr>
+<tr><th>入力</th><td><code>rtl/*.v</code>、<code>dc/MAC4.net.v</code>、<code>dc/MAC4.svf</code>（合成ツールの最適化の記録）</td></tr>
+<tr><th>出力</th><td><code>fm/fm_run.log</code>、<code>unmatched.log</code>、<code>failing.log</code>、<code>passing.log</code></td></tr>
+<tr><th>成功の確認</th><td><code>grep "FORMALITY RESULT" fm/fm_run.log   →   FORMALITY RESULT: PASS</code></td></tr>
+</table><ul><li>先に <code>make syn</code> が済んでいる必要があります。</li><li>FAIL のときは <code>failing.log</code> に、等価でなかった場所が出ます。</li></ul></section>
+<p>シミュレーションは「テストした入力では正しい」ことしか示せません。<strong>等価性検証 (Formal Equivalence)</strong> は、RTL とネットリストの <em>すべての入力</em> に対して出力が一致することを数学的に確認します。</p>
+<figure class="code"><figcaption>fm/fm.tcl</figcaption><pre><code># Formality: is the synthesized netlist logically equivalent to the RTL?
+# Run in fm/:  fm_shell -f fm.tcl
+set designname MAC4
+set corner [expr {[info exists env(CORNER)] ? $env(CORNER) : &quot;wc&quot;}]
+
+# Tell Formality what DC did (retiming/constant propagation hints)
+set_svf ../dc/$designname.svf
+
+# reference = RTL
+read_verilog -container r -libname WORK -01 [list ../rtl/MAC4_LANE.v ../rtl/$designname.v]
+set_top r:/WORK/$designname
+
+# implementation = gate-level netlist (+ std-cell library as black-box models)
+read_db -container i [list $env(STD_DB_[string toupper $corner])]
+read_verilog -container i -libname WORK -netlist ../dc/$designname.net.v
+set_top i:/WORK/$designname
+
+match
+report_unmatched_points &gt; unmatched.log
+set ok [verify]
+report_failing_points &gt; failing.log
+report_passing_points &gt; passing.log
+if {$ok == 1} { puts &quot;FORMALITY RESULT: PASS&quot; } else { puts &quot;FORMALITY RESULT: FAIL&quot; }
+quit</code></pre></figure>
+<p>ツールは <strong>Synopsys Formality</strong>（<code>fm_shell</code>）です。</p>
+<h2>流れ</h2>
+<ol><li><strong>set_svf</strong>: 合成ツールが行った最適化のヒントを渡す（これがないと、状態の並べ替えなどで失敗しやすい）。</li>
+<li><strong>reference</strong> = RTL、<strong>implementation</strong> = ネットリスト（セルの機能はライブラリから読む）。</li>
+<li><strong>match</strong>: 両者のレジスタ・ポートを対応づける（比較点を作る）。</li>
+<li><strong>verify</strong>: 比較点ごとに組み合わせ論理が等価か証明する。</li></ol>
+<figure class="code"><pre><code>make fm
+...
+FORMALITY RESULT: PASS</code></pre></figure>
+<h2>失敗したら</h2>
+<ul><li><code>unmatched.log</code>: 対応づけできなかった点。名前の変化・定数化されたレジスタが典型。</li>
+<li><code>failing.log</code>: 等価でなかった点。ここに出たら<strong>本当に論理が変わっています</strong>（合成のバグ、または RTL のシミュレーションと合成の解釈の違い）。</li></ul>
+<aside class="note tip"><strong>いつ使う？</strong><div>合成後と、配置配線後の両方で行うのが標準です。物理実装の途中でツールが論理を触る（バッファ挿入・ゲートの置換など）ためです。</div></aside>
+<h2>演習</h2>
+<ol><li>RTL の <code>acc + a_q*b_q</code> を一時的に変えて、<strong>RTL だけ</strong>変更し <code>make fm</code> を実行（ネットリストは古いまま）。FAIL の出力を読む。</li></ol>
+
+<div class="pager"><a href="03-synthesis.html"><span>← 前へ</span>03 論理合成</a><a href="05-pnr.html" style="text-align:right"><span>次へ →</span>05 配置配線</a></div>
+<footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>

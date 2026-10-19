@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>10 チェックリストとつまずき集｜デジタル論理合成入門</title><meta name="description" content="signoff前に見る項目と、よくある失敗。">
+<link rel="stylesheet" href="style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html">02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html" class=cur>10 チェックリストとつまずき集</a></nav>
+<main><h1>10 チェックリストとつまずき集</h1><p class="summary">signoff前に見る項目と、よくある失敗。</p>
+<h2>signoff 前チェックリスト</h2>
+<ul class="check">
+<li>RTL シミュレーションが PASS（テストは毎回自己チェック付き）</li>
+<li>合成: <code>check_design</code> に警告なし、setup 違反なし</li>
+<li>等価性検証（合成後）が PASS</li>
+<li>配置配線: <code>check_routes</code> でオープン／ショート 0、CTS 後に hold 違反なし</li>
+<li>寄生抽出が <code>Errors: 0</code>、PrimeTime で全ネットに寄生が付いている</li>
+<li>STA: setup（遅いコーナー）・hold（速いコーナー）の両方で違反なし、<code>check_timing</code> に警告なし</li>
+<li>GLS: SDF 付きで PASS</li>
+<li>DRC: 幾何ルールの違反なし（除外理由を説明できる）</li>
+<li>LVS: CORRECT（電源が全セルまで届いていることの確認にもなる）</li>
+</ul>
+<h2>つまずき集</h2>
+<table>
+<tr><th>症状</th><th>原因</th><th>対処</th></tr>
+<tr><td>コマンドが見つからない</td><td>ツールの環境設定が読まれていない</td><td><code>config/local.csh</code> を確認</td></tr>
+<tr><td>ライブラリが開けず落ちる</td><td>ツールの版とライブラリの作成版が合わない</td><td>ライブラリを作った版のツールで開く（抽出ツールも同じ版に揃える）</td></tr>
+<tr><td>ネットリスト出力後に検証ツールで「セルが無い」</td><td>フィラーなど物理専用セルがネットリストに含まれる</td><td>検証用ネットリストの出力時に除外するか、モデルを用意</td></tr>
+<tr><td>抽出が「層が定義されていない」</td><td>層対応表の名前の不一致</td><td>レイアウト側の層名を確認して対応表に書く</td></tr>
+<tr><td>GLS で出力が <code>x</code></td><td>リセット解除がクロックエッジと重なる</td><td>クロックと違う位相で解除</td></tr>
+<tr><td>STA の slack が ICC2 と違う</td><td>コーナー・RC・クロック設定の違い</td><td>どれが違うかを一つずつ揃えて比べる</td></tr>
+<tr><td>LVS だけ落ちる（トランジスタ数は一致）</td><td>電源レールが電源網につながっていない</td><td>電源網のビアが全レールに付いたかを確認（<a href="05-pnr.html">05章</a>、<a href="09-physical-verification.html">09章</a>）</td></tr>
+<tr><td>ポートが未配置という警告</td><td>電源ポートを作っていない</td><td>信号ピンは配置済みなら無視してよい。フルチップでは電源ピンを定義</td></tr>
+</table>
+<h2>もっと学ぶ</h2>
+<ul><li>クロックゲーティング、DFT（スキャン）、電力解析、マルチコーナー・マルチモード、ECO。</li>
+<li>演習として、<code>MAC4_LANE</code> に<strong>パイプライン段</strong>を追加して周期を 1.5 ns に縮め、全ステップをもう一度通す。</li></ul>
+
+<div class="pager"><a href="09-physical-verification.html"><span>← 前へ</span>09 物理検証 (DRC / LVS)</a><span></span></div>
+<footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>08 ゲートレベルシミュレーション｜デジタル論理合成入門</title><meta name="description" content="遅延情報 (SDF) を使い、実際の遅延でテストをもう一度流す。">
+<link rel="stylesheet" href="style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html">02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html" class=cur>08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a></nav>
+<main><h1>08 ゲートレベルシミュレーション</h1><p class="summary">遅延情報 (SDF) を使い、実際の遅延でテストをもう一度流す。</p><section class="intro"><h2>はじめに: ゲートレベルシミュレーションとは</h2>
+<p>02章のシミュレーションは、遅延のない理想的な RTL で行いました。<strong>ゲートレベルシミュレーション (GLS)</strong> は、完成した回路（ネットリスト）に、<strong>実際の部品と配線の遅延</strong>を載せて、もう一度同じテストを流します。</p>
+<p>遅延の情報は <strong>SDF</strong> というファイルに入っています。STA が「すべての経路が間に合うか」を見るのに対し、GLS は「テストした動作が、遅延込みで正しいか」を見ます。両方通れば、安心度が高まります。</p></section><section class="run"><h2>実行方法</h2>
+<table>
+<tr><th>いちばん簡単</th><td><code>make gls</code>（リポジトリの最上位で実行）</td></tr>
+<tr><th>直接実行</th><td><code>cd sim; csh run_gls.csh setup 2.0   （使い方: csh run_gls.csh &lt;setup|hold&gt; &lt;周期ns&gt;）</code></td></tr>
+<tr><th>入力</th><td><code>icc2/MAC4.icc2.nopg.v</code>、<code>sta/MAC4.setup.sdf</code> または <code>MAC4.hold.sdf</code>、<code>tb/tb_MAC4.v</code>、セルのシミュレーションモデル（config で指定）</td></tr>
+<tr><th>出力</th><td><code>sim/gls_setup_2.0.log</code>、<code>sim/gls_hold_2.0.log</code> など</td></tr>
+<tr><th>成功の確認</th><td><code>grep -E "PASS|FAIL" sim/gls_setup_2.0.log   →   PASS: 400 cycles, no mismatch</code></td></tr>
+</table><ul><li>先に <code>make sta</code> で SDF を作ります。</li>
+<li>引数1は <code>setup</code>（遅いコーナーの遅延）または <code>hold</code>（速いコーナー）、引数2はクロック周期[ns]です。例: <code>csh run_gls.csh hold 2.0</code>。</li>
+<li>周期はテストベンチに <code>+HALF</code>（半周期）として渡されます。</li></ul></section>
+<p>STA は「すべての経路を見る」代わりに論理を見ません。ゲートレベルシミュレーション (GLS) は「<strong>テストした動作が、遅延込みで正しいか</strong>」を見ます。両方そろって安心できます。</p>
+<p>ここでも <strong>Cadence Xcelium</strong> を使います（<code>xrun</code>）。</p>
+<figure class="code"><figcaption>sim/run_gls.csh</figcaption><pre><code>#!/bin/csh -f
+# Gate-level simulation with the post-layout SDF from PrimeTime.
+#   csh run_gls.csh setup 2.0    slow-corner delays, clock period 2.0 ns
+#   csh run_gls.csh hold  2.0    fast-corner delays
+# Defaults: setup 10.0
+source ../env.csh &gt;&amp; /dev/null
+set mode = setup; set per = 10.0
+if ($#argv &gt;= 1) set mode = $argv[1]
+if ($#argv &gt;= 2) set per  = $argv[2]
+set half = `echo &quot;$per / 2&quot; | bc -l`
+rm -rf xcelium_gls.d
+# SDF command file: back-annotate the DUT with the chosen delays
+cat &gt; sdf_$mode.cmd &lt;&lt;CMD
+SDF_FILE = &quot;../sta/MAC4.$mode.sdf&quot;,
+SCOPE = tb_MAC4.dut,
+MTM_CONTROL = &quot;MAXIMUM&quot;,
+LOG_FILE = &quot;sdf_$mode.log&quot;;
+CMD
+xrun -64bit -timescale 1ns/1ps -access +r \
+     ../icc2/MAC4.icc2.nopg.v $STD_VERILOG ../tb/tb_MAC4.v \
+     -xmlibdirname xcelium_gls.d -sdf_cmd_file sdf_$mode.cmd +HALF=$half -l gls_${mode}_$per.log
+grep -E &quot;PASS|FAIL|MISMATCH|SDF.*(ERROR|WARN)&quot; gls_${mode}_$per.log | head -5</code></pre></figure>
+<ul><li><strong>ネットリスト</strong>: 配置配線後のもの。</li>
+<li><strong>セルのシミュレーションモデル</strong>: セルライブラリが提供する Verilog。</li>
+<li><strong>SDF</strong>: 各セル・配線の遅延表（PrimeTime が出力）。<code>-sdf_cmd_file</code> で DUT のスコープに当てる。</li>
+<li><strong>テストベンチ</strong>: RTL と同じもの。クロック周期だけ <code>+HALF</code> で変える。</li></ul>
+<figure class="code"><pre><code>make gls
+== setup 2.0 ns: PASS: 400 cycles, no mismatch
+== hold  2.0 ns: PASS: 400 cycles, no mismatch</code></pre></figure>
+<h2>よく出る症状</h2>
+<table>
+<tr><th>症状</th><th>原因</th></tr>
+<tr><td>出力が <code>x</code> のまま</td><td>リセット解除がクロックエッジに近すぎる（recovery/removal 違反）。または SDF のスコープ違い。</td></tr>
+<tr><td>周期を縮めると不一致</td><td>setup 違反（本物）。STA の結果と照らし合わせる。</td></tr>
+<tr><td>SDF 適用ログに大量の警告</td><td>階層名の不一致。<code>sdf_*.log</code> を確認。</td></tr>
+</table>
+<aside class="note tip"><strong>どのSDFで流す？</strong><div>遅いコーナーの SDF で setup、速いコーナーの SDF で hold を見ます。両方 PASS が望ましい。</div></aside>
+<h2>演習</h2>
+<ol><li><code>make gls</code> の周期を 2.0 → 1.0 に縮めて PASS/FAIL を観察する。</li>
+<li>02章の演習（リセットを <code>#23</code> で解除）で、<code>x</code> が出る様子を確認する。</li></ol>
+
+<div class="pager"><a href="07-sta.html"><span>← 前へ</span>07 signoff STA</a><a href="09-physical-verification.html" style="text-align:right"><span>次へ →</span>09 物理検証 (DRC / LVS)</a></div>
+<footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>

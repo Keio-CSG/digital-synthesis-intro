@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>06 寄生抽出｜デジタル論理合成入門</title><meta name="description" content="レイアウトから配線の抵抗・容量を取り出し、SPEF にする。">
+<link rel="stylesheet" href="style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html">02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html" class=cur>06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a></nav>
+<main><h1>06 寄生抽出</h1><p class="summary">レイアウトから配線の抵抗・容量を取り出し、SPEF にする。</p><section class="intro"><h2>はじめに: 寄生抽出とは</h2>
+<p>チップ上の配線は、理想的な「ただの線」ではありません。細い金属には<strong>抵抗 (R)</strong> があり、隣の配線や下地との間には<strong>容量 (C)</strong> があります。これらは信号を遅らせる原因で、<strong>寄生素子</strong>と呼ばれます。</p>
+<p><strong>寄生抽出</strong>は、完成したレイアウトの形状から、この R と C の値を計算します。結果は <strong>SPEF</strong> というテキストファイルになり、次の signoff STA で使います。</p></section><section class="run"><h2>実行方法</h2>
+<table>
+<tr><th>いちばん簡単</th><td><code>make rcx</code>（リポジトリの最上位で実行）</td></tr>
+<tr><th>直接実行</th><td><code>cd rcx; csh run_starrc.csh</code></td></tr>
+<tr><th>入力</th><td><code>icc2/MAC4.ndm</code>（ICC2 のレイアウトデータ）、抽出用のテクノロジデータ・層対応表（config で指定）</td></tr>
+<tr><th>出力</th><td><code>rcx/MAC4.spef</code>、<code>rcx/starrc.log</code></td></tr>
+<tr><th>成功の確認</th><td><code>grep -E "ERROR" rcx/starrc.log   →   何も出なければ OK ／ ls -l rcx/MAC4.spef</code></td></tr>
+</table><ul><li>先に <code>make pnr</code> が必要です。</li></ul></section>
+<p>ツールは <strong>Synopsys StarRC</strong> です。配線は「ただの線」ではなく、<strong>抵抗 R と容量 C</strong>を持ち、隣の線とは<strong>結合容量</strong>でつながっています。これを抽出して <strong>SPEF</strong> というテキストにまとめ、STA ツールに渡します。</p>
+<figure class="code"><figcaption>rcx/run_starrc.csh</figcaption><pre><code>#!/bin/csh -f
+# Parasitic extraction with StarRC from the ICC2 layout.  Run in rcx/:  csh run_starrc.csh
+# Writes starrc.cmd from environment variables (config/local.csh), then runs StarXtract.
+source ../env.csh &gt;&amp; /dev/null
+rm -rf star
+# layer mapping: layout database layer names -&gt; technology layer names (site file)
+cp $COURSE_ROOT/config/starrc_layer.map layer.map
+cat &gt; starrc.cmd &lt;&lt;CMD
+BLOCK: MAC4/write_data
+NDM_DATABASE: ../icc2/MAC4.ndm
+TCAD_GRD_FILE: $STARRC_NXTGRD_MAX
+MAPPING_FILE: ./layer.map
+EXTRACTION: RC
+COUPLE_TO_GROUND: NO
+POWER_NETS: VDD VSS
+REDUCTION: NO_EXTRA_LOOPS
+NETLIST_FORMAT: SPEF
+NETLIST_FILE: MAC4.spef
+NETLIST_CONNECT_SECTION: YES
+SKIP_CELLS: !*
+CASE_SENSITIVE: NO
+STAR_DIRECTORY: ./star
+CMD
+StarXtract starrc.cmd &gt;&amp; starrc.log
+grep -E &quot;ERROR|Error|SPEF|spef&quot; starrc.log | head
+ls -l MAC4.spef*</code></pre></figure>
+<h2>入力</h2>
+<ul><li><strong>レイアウト</strong>（ICC2 のデータベース）。どの金属がどのネットか。</li>
+<li><strong>テクノロジ（RC モデル）</strong>: 各層の厚み・誘電体などから作られた抽出用のデータ。</li>
+<li><strong>層の対応表</strong>（<code>config/starrc_layer.map</code>）: レイアウト側の層の名前と、抽出用モデル側の名前を結ぶ。<em>合っていないと「この層は未定義」というエラーで止まります</em>。</li></ul>
+<h2>確認ポイント</h2>
+<ul><li><code>starrc.log</code> の <code>Errors: 0</code>。</li>
+<li>PrimeTime で読み込んだ時の <code>report_annotated_parasitics</code>: <strong>ほぼ全ネットに寄生が付いたか</strong>。付いていない配線は「理想（遅延ゼロ）」扱いで、タイミングが甘く出ます。</li>
+<li>抵抗が付いているか（<code>REDUCTION</code> の設定が強すぎると R が消えます）。</li></ul>
+<aside class="note tip"><strong>コーナー</strong><div>実際のsignoffでは、容量が大きいコーナー（setup 用）と小さいコーナー（hold 用）でそれぞれ抽出します。この教材は1コーナーの抽出で、遅延ライブラリ側のコーナーを切り替えて解析します。</div></aside>
+
+<div class="pager"><a href="05-pnr.html"><span>← 前へ</span>05 配置配線</a><a href="07-sta.html" style="text-align:right"><span>次へ →</span>07 signoff STA</a></div>
+<footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>02 RTLとシミュレーション｜デジタル論理合成入門</title><meta name="description" content="題材 MAC4 と、自己チェック付きテストベンチ。">
+<link rel="stylesheet" href="style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html" class=cur>02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a></nav>
+<main><h1>02 RTLとシミュレーション</h1><p class="summary">題材 MAC4 と、自己チェック付きテストベンチ。</p><section class="intro"><h2>はじめに: RTL とは、シミュレーションとは</h2>
+<p><strong>RTL</strong>（Register Transfer Level）は、回路を<strong>「レジスタ（値を覚える部品）」と「レジスタ間で行う計算」</strong>で書く抽象度のことです。「クロックが1回来るたびに、この値とこの値を足して、このレジスタに入れる」といった動作を、Verilog という言語で書きます。</p>
+<p>ソフトウェアのプログラムは上から順に実行されますが、<strong>ハードウェアの記述は「全部の部品が同時に動いている」</strong>様子を書いたものです。ここが最初に戸惑うところです。</p>
+<p><strong>クロック</strong>は一定の間隔で打たれる合図で、レジスタはクロックの立ち上がりの瞬間にだけ新しい値を取り込みます。デジタル回路はこの合図に合わせて、一歩ずつ進みます。</p>
+<p><strong>シミュレーション</strong>は、作った回路の動きをコンピュータ上で再現して確かめることです。<strong>テストベンチ</strong>は、回路に入力を与えて出力を確認する「テスト用の回路」で、実際のチップには入りません。</p></section><section class="run"><h2>実行方法</h2>
+<table>
+<tr><th>いちばん簡単</th><td><code>make sim</code>（リポジトリの最上位で実行）</td></tr>
+<tr><th>直接実行</th><td><code>cd sim; csh run_rtl.csh</code></td></tr>
+<tr><th>入力</th><td><code>rtl/MAC4_LANE.v</code>, <code>rtl/MAC4.v</code>, <code>tb/tb_MAC4.v</code></td></tr>
+<tr><th>出力</th><td><code>sim/rtl.log</code>（実行ログ）、<code>sim/wave.vcd</code>（波形データ）</td></tr>
+<tr><th>成功の確認</th><td><code>grep PASS sim/rtl.log   →   PASS: 400 cycles, no mismatch</code></td></tr>
+</table><ul><li>波形を見たいときは <code>wave.vcd</code> を波形ビューアで開きます（信号が時間とともにどう変わるか見られます）。</li>
+<li>RTL を直したら、そのまま <code>make sim</code> をもう一度実行するだけです（毎回コンパイルからやり直します）。</li>
+<li>スクリプトの中身: <code>xrun</code>（シミュレータ）に、RTL とテストベンチを渡しています。<code>-access +r</code> は信号を読める状態にする指定、<code>-define DUMP</code> は波形を出力する指定です。</li></ul></section>
+<h2>題材: 4レーン乗加算器 (MAC4)</h2>
+<p>1レーンは <strong>4bit × 4bit の乗算結果を 12bit のアキュムレータに足し込む</strong>回路で、入力にレジスタが付いています。これを4レーン並べ、クロックとリセットを共有します（約90個のフリップフロップ）。小さいですが、<em>クロックツリーが必要になるくらいの数</em>です。</p>
+
+<svg viewBox="0 0 940 420" role="img" aria-label="MAC4 のアーキテクチャ図" class="arch">
+  <defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--muted)"/></marker></defs>
+  <!-- top level -->
+  <text x="10" y="18" class="h">MAC4（トップ）</text>
+  <rect x="10" y="28" width="300" height="372" rx="10" class="top"/>
+  <g class="lane"><rect x="40" y="52" width="190" height="62" rx="8"/><text x="135" y="78">lane 0</text><text x="135" y="98" class="s">a[3:0] × b[3:0] → acc[11:0]</text></g>
+  <g class="lane"><rect x="40" y="132" width="190" height="62" rx="8"/><text x="135" y="158">lane 1</text><text x="135" y="178" class="s">a[7:4] × b[7:4] → acc[23:12]</text></g>
+  <g class="lane"><rect x="40" y="212" width="190" height="62" rx="8"/><text x="135" y="238">lane 2</text><text x="135" y="258" class="s">a[11:8] × b[11:8] → acc[35:24]</text></g>
+  <g class="lane"><rect x="40" y="292" width="190" height="62" rx="8"/><text x="135" y="318">lane 3</text><text x="135" y="338" class="s">a[15:12] × b[15:12] → acc[47:36]</text></g>
+  <text x="160" y="366" class="s">共通の入力: clk, rst_n, clr, en</text>
+  <text x="160" y="390" class="s">各レーンは同じ回路（MAC4_LANE）</text>
+  <!-- lane detail -->
+  <text x="350" y="18" class="h">1レーン（MAC4_LANE）の中身</text>
+  <rect x="340" y="28" width="590" height="372" rx="10" class="top"/>
+  <g class="blk"><rect x="360" y="90" width="90" height="46" rx="6"/><text x="405" y="110">a_q</text><text x="405" y="126" class="s">4bit レジスタ</text></g>
+  <g class="blk"><rect x="360" y="170" width="90" height="46" rx="6"/><text x="405" y="190">b_q</text><text x="405" y="206" class="s">4bit レジスタ</text></g>
+  <g class="blk"><rect x="360" y="250" width="90" height="46" rx="6"/><text x="405" y="270">en_q, clr_q</text><text x="405" y="286" class="s">制御レジスタ</text></g>
+  <g class="calc"><rect x="500" y="115" width="100" height="72" rx="6"/><text x="550" y="146">乗算</text><text x="550" y="166" class="s">4bit × 4bit</text><text x="550" y="180" class="s">→ 8bit</text></g>
+  <g class="calc"><rect x="650" y="115" width="90" height="72" rx="6"/><text x="695" y="146">加算</text><text x="695" y="166" class="s">acc + 積</text><text x="695" y="180" class="s">12bit</text></g>
+  <g class="blk big"><rect x="785" y="115" width="125" height="72" rx="6"/><text x="847" y="144">acc</text><text x="847" y="164" class="s">12bit レジスタ</text><text x="847" y="178" class="s">= 出力 acc</text></g>
+  <path d="M450,113 H475 V135 H498 M450,193 H475 V167 H498 M600,151 H648 M740,151 H783" class="arr"/>
+  <path d="M847,187 V235 H695 V189" class="arr fb"/>
+  <text x="770" y="253" class="s">前の値に足し込む（フィードバック）</text>
+  <path d="M450,273 H700 V290 H847 V189" class="arr ctl"/>
+  <text x="560" y="312" class="s">clr_q = 1 でゼロに戻す / en_q = 1 のときだけ更新</text>
+  <text x="360" y="62" class="s l">入力 a, b, en, clr（1クロック遅れて取り込み）</text>
+  <text x="360" y="376" class="s l">すべてのレジスタは同じクロック clk で動く。rst_n（非同期リセット）で 0 に戻る。</text>
+</svg>
+
+<p>図の左が4レーンを並べたトップ、右が1レーンの中身です。データは <strong>入力レジスタ → 乗算 → 加算 → アキュムレータ</strong>と流れ、アキュムレータの値は次のサイクルの加算にフィードバックされます。</p>
+<figure class="code"><figcaption>rtl/MAC4_LANE.v</figcaption><pre><code>// 4x4 unsigned multiply-accumulate with registered inputs.
+//   stage 1: a_q,b_q &lt;= a,b           (input registers)
+//   stage 2: acc     &lt;= acc + a_q*b_q (accumulate, when en_q=1)
+// clr (synchronous) restarts the accumulation.
+module MAC4_LANE (
+    input            clk,
+    input            rst_n,   // asynchronous, active low
+    input            clr,
+    input            en,
+    input      [3:0] a,
+    input      [3:0] b,
+    output reg [11:0] acc
+);
+    reg [3:0] a_q, b_q;
+    reg       en_q, clr_q;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            a_q &lt;= 4&#x27;d0; b_q &lt;= 4&#x27;d0; en_q &lt;= 1&#x27;b0; clr_q &lt;= 1&#x27;b0;
+        end else begin
+            a_q &lt;= a; b_q &lt;= b; en_q &lt;= en; clr_q &lt;= clr;
+        end
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)      acc &lt;= 12&#x27;d0;
+        else if (clr_q)  acc &lt;= 12&#x27;d0;
+        else if (en_q)   acc &lt;= acc + a_q * b_q;
+    end
+endmodule</code></pre></figure>
+<figure class="code"><figcaption>rtl/MAC4.v</figcaption><pre><code>// Four independent MAC4_LANE units sharing clock, reset and control.
+//   lane k multiplies a[4k+3:4k] * b[4k+3:4k] and accumulates into acc[12k+11:12k].
+// Four lanes (about 90 flip-flops) give the clock tree something to balance.
+module MAC4 (
+    input             clk,
+    input             rst_n,
+    input             clr,
+    input             en,
+    input      [15:0] a,
+    input      [15:0] b,
+    output     [47:0] acc
+);
+    genvar k;
+    generate
+        for (k = 0; k &lt; 4; k = k + 1) begin : lane
+            MAC4_LANE u (.clk(clk), .rst_n(rst_n), .clr(clr), .en(en),
+                         .a(a[4*k +: 4]), .b(b[4*k +: 4]), .acc(acc[12*k +: 12]));
+        end
+    endgenerate
+endmodule</code></pre></figure>
+<p>シミュレータは <strong>Cadence Xcelium</strong>（<code>xrun</code>）です。</p>
+<h2>テストベンチ</h2>
+<p>乱数入力を DUT と<strong>振る舞いモデル</strong>に同時に与え、毎サイクル出力を比べます。人が波形を見なくても PASS/FAIL が出ることが重要です。後のゲートレベルシミュレーションでも<strong>同じテストベンチ</strong>を使います。</p>
+<figure class="code"><figcaption>tb/tb_MAC4.v</figcaption><pre><code>    // reference model of the 4 lanes, same 2-cycle latency
+    reg [15:0] ma, mb; reg men, mclr; reg [47:0] macc;
+    integer k;
+    always @(posedge clk) begin
+        for (k = 0; k &lt; 4; k = k + 1)
+            if (mclr)     macc[12*k +: 12] &lt;= 0;
+            else if (men) macc[12*k +: 12] &lt;= macc[12*k +: 12] + ma[4*k +: 4] * mb[4*k +: 4];
+        ma &lt;= a; mb &lt;= b; men &lt;= en; mclr &lt;= clr;
+    end
+
+    integer i, errors = 0;
+    initial begin
+        ma=0; mb=0; men=0; mclr=0; macc=0;
+        #20 @(negedge clk) rst_n = 1;   // release reset away from the clock edge (recovery time)
+        for (i = 0; i &lt; 400; i = i + 1) begin
+            @(negedge clk);
+            a = $random; b = $random; en = ($random % 4) != 0; clr = ($random % 32) == 0;
+            @(posedge clk); #(half*1.9);   // sample just before the next edge (output settled)
+            if (i &gt; 3 &amp;&amp; acc !== macc) begin
+                errors = errors + 1;
+                $display(&quot;MISMATCH t=%0t acc=%0h expected=%0h&quot;, $time, acc, macc);
+            end
+        end
+        if (errors == 0) $display(&quot;PASS: 400 cycles, no mismatch&quot;);
+        else             $display(&quot;FAIL: %0d mismatches&quot;, errors);
+        $finish;
+    end</code></pre></figure>
+<figure class="code"><figcaption>実行と期待される出力</figcaption><pre><code>cd sim &amp;&amp; csh run_rtl.csh
+# ...
+PASS: 400 cycles, no mismatch</code></pre></figure>
+<aside class="note warn"><strong>つまずきポイント: リセットの解除タイミング</strong><div>リセットを<strong>クロックエッジちょうど</strong>で解除すると、ゲートレベルでは recovery 違反になり出力が <code>X</code> になります（RTLでは気づけません）。テストベンチでは <code>@(negedge clk)</code> で解除しています。</div></aside>
+<h2>演習</h2>
+<ol><li><code>MAC4_LANE.v</code> のアキュムレートを <code>acc + a_q*b_q</code> から <code>acc + a_q+b_q</code> に変えて、テストが FAIL になることを確認する。</li>
+<li>リセット解除を <code>#23 rst_n = 1;</code> に戻すとどうなるか、<a href="08-gls.html">08章</a>の後で試す。</li></ol>
+
+<div class="pager"><a href="01-setup.html"><span>← 前へ</span>01 セットアップ</a><a href="03-synthesis.html" style="text-align:right"><span>次へ →</span>03 論理合成</a></div>
+<footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>

@@ -1,0 +1,6 @@
+conducting_layers
+<layout layer name>  <technology (ITF) layer name>
+# ... one line per conducting layer
+via_layers
+<layout via name>    <technology (ITF) via name>
+# ... one line per via layer

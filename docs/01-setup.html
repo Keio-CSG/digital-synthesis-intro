@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>01 セットアップ｜デジタル論理合成入門</title><meta name="description" content="リポジトリの構成と、環境依存部分の分け方。">
+<link rel="stylesheet" href="style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html" class=cur>01 セットアップ</a><a href="02-rtl-sim.html">02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a></nav>
+<main><h1>01 セットアップ</h1><p class="summary">リポジトリの構成と、環境依存部分の分け方。</p><section class="intro"><h2>はじめに: リポジトリとコマンドの基本</h2>
+<p><strong>リポジトリ</strong>は、このコースのファイル一式を入れたフォルダです。回路（<code>rtl/</code>）、テスト（<code>tb/</code>）、各ツールの実行スクリプトが入っています。</p>
+<p>ツールはすべて<strong>コマンドライン</strong>（黒い画面に文字を打つ方式）で動かします。実行したい内容は「スクリプト」というテキストファイルに書いてあり、<code>make</code> コマンドがそれらを順番に呼び出します。</p>
+<p>なお、設計に使うツールとライブラリ（部品の一覧）は、研究室から提供されるものを使います。それらの場所は <code>config/</code> に書いて、スクリプトに教えます。</p></section><section class="run"><h2>コマンド早見表</h2>
+<table>
+<tr><th>やりたいこと</th><th>コマンド</th><th>先に必要なもの</th></tr>
+<tr><td>全部まとめて実行</td><td><code>make all</code></td><td>config の設定</td></tr>
+<tr><td>RTLシミュレーション</td><td><code>make sim</code></td><td>なし</td></tr>
+<tr><td>論理合成</td><td><code>make syn</code></td><td>なし</td></tr>
+<tr><td>等価性検証</td><td><code>make fm</code></td><td><code>make syn</code></td></tr>
+<tr><td>配置配線</td><td><code>make pnr</code></td><td><code>make syn</code></td></tr>
+<tr><td>寄生抽出</td><td><code>make rcx</code></td><td><code>make pnr</code></td></tr>
+<tr><td>signoff STA</td><td><code>make sta</code></td><td><code>make pnr rcx</code></td></tr>
+<tr><td>ゲートレベルシミュレーション</td><td><code>make gls</code></td><td><code>make sta</code>（SDF を使うため）</td></tr>
+<tr><td>DRC</td><td><code>make drc</code></td><td><code>make pnr</code></td></tr>
+<tr><td>LVS</td><td><code>make lvs</code></td><td><code>make pnr</code></td></tr>
+<tr><td>結果の画像（配置・クロック・電源・GDS）</td><td><code>python3 tools/render_layout.py</code></td><td><code>make pnr</code>、<code>config/render.json</code></td></tr>
+<tr><td>生成物を消す</td><td><code>make clean</code></td><td>なし</td></tr>
+</table>
+<p>各ステップの詳しい実行方法・入出力・成功の確認は、各章の「実行方法」に書いてあります。</p></section>
+<p>このリポジトリは<strong>環境に依存する情報を <code>config/</code> に隔離</strong>しています。スクリプト本体にはパスもライブラリ名も書かれていません。</p>
+<h2>ディレクトリ構成</h2>
+<figure class="code"><pre><code>rtl/      RTL（MAC4_LANE.v = 1レーン, MAC4.v = 4レーンのトップ）
+tb/       自己チェック付きテストベンチ
+const/    SDC（DC・ICC2・PrimeTime で共通に使う）
+sim/      RTLシミュレーション / ゲートレベルシミュレーション
+dc/       論理合成        fm/   等価性検証
+icc2/     配置配線        rcx/  寄生抽出
+sta/      signoff STA     verif/ DRC・LVS
+config/   環境依存ファイル（local.example.* をコピーして自分用を作る）
+docs/     このWebサイト（tools/build_site.py で生成）
+Makefile  make all で全ステップ</code></pre></figure>
+<h2>手順</h2>
+<ol>
+<li>リポジトリを取得する。</li>
+<li><code>config/</code> の <code>*.example.*</code> をコピーして、自分の環境の値で埋める。
+<figure class="code"><pre><code>cp config/local.example.csh          config/local.csh           # ツールの読み込み・ライブラリのファイル位置
+cp config/tech.example.tcl           config/tech.tcl            # 金属層の名前・配線方向
+cp config/starrc_layer.example.map   config/starrc_layer.map    # レイアウト層名 → 抽出用の層名
+cp config/prep_drc.example.csh       config/prep_drc.csh        # DRCデックの準備
+cp config/prep_lvs.example.csh       config/prep_lvs.csh        # LVSデックの準備
+cp config/render.example.json        config/render.json         # 画像生成用（GDS の層番号など）</code></pre></figure>
+これらの実体は <code>.gitignore</code> に入っており、<strong>コミットされません</strong>。値は指導教員・先輩から教わってください。</li>
+<li>全体を実行する。
+<figure class="code"><pre><code>source env.csh      # 任意: ツールが使えるか確認
+make all            # sim → syn → fm → pnr → rcx → sta → gls → drc → lvs
+make clean          # 生成物を全部消す</code></pre></figure>
+</li>
+</ol>
+<aside class="note tip"><strong>ステップ単体で実行</strong><div><code>make syn</code> のようにステップ名を指定できます。上流が済んでいない場合は、先にそのステップを実行してください（例: <code>make sta</code> には <code>make pnr rcx</code> が必要）。</div></aside>
+<h2>config/local.csh に書く変数（名前だけ）</h2>
+<table>
+<tr><th>変数</th><th>意味</th></tr>
+<tr><td><code>STD_DB_WC / TC / BC</code></td><td>スタンダードセルのタイミングライブラリ（遅い／標準／速いコーナー）</td></tr>
+<tr><td><code>STD_NDM</code>, <code>STD_LIBNAME</code></td><td>ICC2 用のセルライブラリ</td></tr>
+<tr><td><code>TECH_FILE</code>, <code>TLUP_*</code>, <code>LAYER_MAP</code></td><td>テクノロジファイル・RC モデル</td></tr>
+<tr><td><code>GDS_LAYER_MAP</code>, <code>STD_GDS</code></td><td>GDS 出力用の層対応・セルの GDS</td></tr>
+<tr><td><code>STD_VERILOG</code>, <code>STD_CDL</code></td><td>ゲートレベルシミュレーション用モデル／LVS 用 SPICE</td></tr>
+<tr><td><code>FILLER_CELLS</code></td><td>フィラーセル名（大きい順）</td></tr>
+<tr><td><code>DRC_DECK</code>, <code>LVS_DECK</code></td><td>物理検証のルールデック</td></tr>
+</table>
+
+<div class="pager"><a href="index.html"><span>← 前へ</span>デジタル論理合成入門</a><a href="02-rtl-sim.html" style="text-align:right"><span>次へ →</span>02 RTLとシミュレーション</a></div>
+<footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>

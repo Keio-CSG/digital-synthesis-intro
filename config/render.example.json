@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to config/render.json (git-ignored). GDS layer number -> metal name, lowest to highest.",
+  "metal_layers": {"<gds layer number>": "M1", "<gds layer number>": "M2"},
+  "clock_cell_regex": "<regex of the instance names the clock-tree tool creates>",
+  "filler_regex": "<regex of filler instance names>"
+}

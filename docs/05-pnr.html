@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>05 配置配線｜デジタル論理合成入門</title><meta name="description" content="フロアプランからクロックツリー合成、配線、GDS出力まで。">
+<link rel="stylesheet" href="style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html">02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html" class=cur>05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a></nav>
+<main><h1>05 配置配線</h1><p class="summary">フロアプランからクロックツリー合成、配線、GDS出力まで。</p><section class="intro"><h2>はじめに: 配置配線とは、クロックツリーとは</h2>
+<p>ネットリストは「どの部品がどの部品につながるか」という<strong>接続表</strong>で、位置の情報がありません。<strong>配置配線</strong>（P&amp;R: Place and Route）は、これをチップの上に実際に並べ、金属の配線でつなぎます。</p>
+<ul><li><strong>フロアプラン</strong>: チップ（ブロック）の大きさと、入出力端子の位置を決める。</li>
+<li><strong>電源配線</strong>: すべての部品に電気を送る太い配線を張る。</li>
+<li><strong>配置</strong>: 部品を並べる。つながりの多いものを近くに置くと配線が短くなります。</li>
+<li><strong>クロックツリー合成 (CTS)</strong>: クロックを全レジスタに<strong>ほぼ同時に</strong>届けるための、バッファの木を作る。</li>
+<li><strong>配線</strong>: 部品同士を金属でつなぐ。</li></ul>
+<p>配線は長いほど遅くなるため、<strong>ここで初めて「実際の遅さ」が見えてきます</strong>。最終的に、工場に渡す図面データ <strong>GDS</strong> が出力されます。</p></section><section class="run"><h2>実行方法</h2>
+<table>
+<tr><th>いちばん簡単</th><td><code>make pnr</code>（リポジトリの最上位で実行）</td></tr>
+<tr><th>直接実行</th><td><code>cd icc2; icc2_shell -f icc2.tcl >& icc2_run.log</code></td></tr>
+<tr><th>入力</th><td><code>dc/MAC4.net.v</code>（ネットリスト）、<code>const/MAC4.sdc</code>、テクノロジ・セルのデータ（config で指定）</td></tr>
+<tr><th>出力</th><td><code>icc2/MAC4.gds</code>（レイアウト）、<code>MAC4.icc2.nopg.v</code>・<code>MAC4.icc2.lvs.v</code>（ネットリスト）、<code>MAC4.icc2.sdf</code>、<code>MAC4.def</code>、レポート</td></tr>
+<tr><th>成功の確認</th><td><code>grep -E "^Error" icc2/icc2_run.log   →   何も出なければ OK ／ grep "slack (" icc2/MAC4.cts.timing.log | head -1</code></td></tr>
+</table><ul><li>先に <code>make syn</code>。実行時間は1分半〜2分ほどです。</li>
+<li>コアの大きさを変えるには、<code>icc2/icc2.tcl</code> の <code>core_width</code> / <code>core_height</code> を編集します。</li>
+<li>実行のたびに <code>icc2/MAC4.ndm</code> を作り直します（古いものは自動で消えます）。</li></ul></section>
+<p>ツールは <strong>Synopsys IC Compiler II</strong>（<code>icc2_shell</code>）です。ネットリストを<strong>実際の形</strong>にします。配置配線で初めて「配線遅延」「クロックツリー」「電源網」が現れます。</p>
+<h2>手順の全体像</h2>
+<ol>
+<li><strong>ライブラリ作成・ネットリスト読み込み</strong>（<code>create_lib</code>, <code>read_verilog</code>, <code>link_block</code>）</li>
+<li><strong>RC モデルとシナリオ</strong>: 寄生モデルと、SDC を読み込んだシナリオ（setup と hold を両方解析）</li>
+<li><strong>フロアプラン</strong>: コアの大きさと、ピン配置（<code>initialize_floorplan</code>, <code>place_pins</code>）</li>
+<li><strong>電源網</strong>: 縦の電源ストラップと、セル列の電源レール、その間をつなぐビア（<code>create_pg_*</code>, <code>compile_pg</code>）</li>
+<li><strong>配置</strong>: <code>place_opt</code> — セルを置き、タイミングを見ながら最適化</li>
+<li><strong>クロックツリー合成 + hold 修正</strong>: <code>clock_opt</code></li>
+<li><strong>配線</strong>: <code>route_auto</code>, <code>route_opt</code>、<code>check_routes</code></li>
+<li><strong>フィラー</strong>で隙間を埋める</li>
+<li><strong>出力</strong>: ネットリスト（検証用）、GDS、DEF、SDF</li></ol>
+<h2>フロアプラン</h2>
+<figure class="code"><figcaption>icc2/icc2.tcl</figcaption><pre><code># --- floorplan parameters -------------------------------------------------
+set core_width      65        ;# core width  [um]
+set core_height     54        ;# core height [um]  (multiple of the row height)
+set io2core_offset  1.0
+set power_width     0.5
+set power_offset    0.5
+set increment       10.0      ;# power mesh pitch [um]</code></pre></figure>
+<p>面積の目安: セル面積の合計 ÷ 目標利用率（ここでは約 50%）≒ コア面積。狭すぎると配線できず、広すぎると配線が長くなります。</p>
+<h2>クロックツリー合成 (CTS)</h2>
+<figure class="code"><figcaption>icc2/icc2.tcl</figcaption><pre><code># 8. Placement (+ pre-CTS optimization)
+# =============================================================================
+set_ignored_layers -max_routing_layer $LAYER_ROUTE_MAX
+set_app_options -name place.coarse.continue_on_missing_scandef -value true
+place_opt
+connect_pg_net -automatic
+save_block -as ${designname}/place_opt
+redirect -file ${designname}.pre_cts.timing.log { report_timing -delay_type max -max_paths 3 }
+
+# =============================================================================
+# 9. Clock tree synthesis + post-CTS optimization (setup and HOLD fixing)
+# =============================================================================
+clock_opt
+save_block -as ${designname}/clock_opt
+redirect -file ${designname}.cts.skew.log   { report_clock_qor -type summary }
+redirect -file ${designname}.cts.timing.log { report_timing -delay_type max -max_paths 3 }
+redirect -file ${designname}.cts.hold.log   { report_timing -delay_type min -max_paths 3 }</code></pre></figure>
+<p>配置の時点では<strong>クロックは理想</strong>（全フリップフロップに同時に届く）として扱われます。<code>clock_opt</code> でクロックバッファの木を作り、各フリップフロップへの到着時間のばらつき（<strong>スキュー</strong>）を揃えます。同時に、データが早く着きすぎる <strong>hold 違反</strong>を遅延セルの挿入で直します。</p>
+<figure class="code"><figcaption>CTS 後のクロック QoR（出力の形）</figcaption><pre><code>Clock   Sinks  Levels  Repeater  Latency  Skew
+clk       88      2         3      ~0.06   ~0.01      ← cts.skew.log (icc2/)</code></pre></figure>
+<aside class="note warn"><strong>小さな回路では CTS が何もしない</strong><div>フリップフロップが20個ほどなら、クロックポートが全部を直接駆動でき、バッファが入りません。このコースで4レーンにしているのは、ツリーができる様子を見るためです。</div></aside>
+<h2>できあがったものを見る</h2>
+<p>ツールのビューアがなくても結果を確認できるよう、GDS と DEF から画像を作るスクリプト（<code>tools/render_layout.py</code>、<code>python3 tools/render_layout.py</code>）を付けています。</p>
+<figure class="img"><img src="img/placement.png" alt="配置結果" loading="lazy"><figcaption>配置: セルの色は4つのレーンごと。濃いセルがフリップフロップ、赤がクロックバッファ。同じレーンのセルがまとまって置かれる。</figcaption></figure>
+<figure class="img"><img src="img/clock_tree.png" alt="クロックツリー" loading="lazy"><figcaption>クロックツリー: 赤い四角がクロックバッファ、青い線がクロック配線、黒い点が88個のフリップフロップ。1本のクロックが枝分かれして全部に届く。</figcaption></figure>
+<figure class="img"><img src="img/power_grid.png" alt="電源網" loading="lazy"><figcaption>電源網: 横の線が標準セルの電源レール（最下層の金属）、縦の太い線が上位の金属の電源ストラップ。赤が VDD、青が VSS。交点がビアでつながっている。</figcaption></figure>
+<figure class="img"><img src="img/layout.png" alt="最終レイアウト" loading="lazy"><figcaption>最終レイアウト (GDS): セルの輪郭と、金属層ごとの配線。工場に渡すのはこのデータ。</figcaption></figure>
+<h2>レポートの見どころ</h2>
+<table>
+<tr><th>ファイル</th><th>見るもの</th></tr>
+<tr><td><code>MAC4.pre_cts.timing.log</code></td><td>CTS 前の setup（クロック理想）</td></tr>
+<tr><td><code>MAC4.cts.timing.log</code></td><td>CTS 後の setup（クロック伝搬）。<strong>配線遅延が入って slack が減る</strong></td></tr>
+<tr><td><code>MAC4.cts.hold.log</code></td><td>CTS 後の hold。<strong>修正前は負になりやすい</strong></td></tr>
+<tr><td><code>MAC4.cts.skew.log</code></td><td>スキュー・レイテンシ・バッファ数</td></tr>
+<tr><td><code>MAC4.check_routes.log</code></td><td>配線の DRC/オープン/ショート（0 であること）</td></tr>
+</table>
+<aside class="note warn"><strong>電源は「引いた」だけでは足りない</strong><div>電源レールが上位の電源とビアでつながっていないと、タイミングも DRC も通るのに、<a href='09-physical-verification.html'>LVS だけが落ちます</a>。電源網を作った直後に、ビアが全部のレールに付いたかを確認してください（この教材では実際にそれで一度つまずきました）。</div></aside>
+<aside class="note tip"><strong>ICC2 の結果は暫定</strong><div>ICC2 内の寄生抽出は簡易です。最終判断は次章以降の <strong>StarRC + PrimeTime</strong> で行います。</div></aside>
+<h2>演習</h2>
+<ol><li><code>core_width</code> を 90 に広げて再実行。配線長（<code>cts.skew.log</code> の Wire Length）はどうなるか。</li>
+<li>CTS 前後の setup slack を比べ、なぜ変わるか説明する。</li></ol>
+
+<div class="pager"><a href="04-formal.html"><span>← 前へ</span>04 等価性検証</a><a href="06-extraction.html" style="text-align:right"><span>次へ →</span>06 寄生抽出</a></div>
+<footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>09 物理検証 (DRC / LVS)｜デジタル論理合成入門</title><meta name="description" content="製造ルールを守っているか、回路図と一致しているか。">
+<link rel="stylesheet" href="style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html">02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html" class=cur>09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a></nav>
+<main><h1>09 物理検証 (DRC / LVS)</h1><p class="summary">製造ルールを守っているか、回路図と一致しているか。</p><section class="intro"><h2>はじめに: DRC と LVS とは</h2>
+<p>工場は、チップを作るときの<strong>守るべき寸法のルール</strong>（配線の最小幅・最小間隔など）を決めています。<strong>DRC</strong>（Design Rule Check）は、完成したレイアウトがそのルールに違反していないかを、図形のレベルで検査します。</p>
+<p><strong>LVS</strong>（Layout Versus Schematic）は、レイアウトの図形からトランジスタとつながりを取り出し、<strong>回路図（ネットリスト）と同じ回路か</strong>を照合します。配線の誤接続などを発見できます。</p>
+<p>タイミングが合っていても、製造ルール違反や接続ミスがあれば、チップは作れません。そのため、物理検証も signoff の一部です。</p></section><section class="run"><h2>実行方法</h2>
+<table>
+<tr><th>いちばん簡単</th><td><code>make drc   と   make lvs</code>（リポジトリの最上位で実行）</td></tr>
+<tr><th>直接実行</th><td><code>cd verif; csh run_drc.csh   と   csh run_lvs.csh</code></td></tr>
+<tr><th>入力</th><td><code>icc2/MAC4.gds</code>、<code>icc2/MAC4.icc2.lvs.v</code>（LVSのみ）、ルールデック（config で指定）</td></tr>
+<tr><th>出力</th><td><code>verif/drc/MAC4.drc.summary</code>、<code>verif/drc/drc.nonzero.txt</code>（違反のあるルール一覧）、<code>verif/lvs/MAC4.lvs.report</code></td></tr>
+<tr><th>成功の確認</th><td><code>cat verif/drc/drc.nonzero.txt ／ grep -E "CORRECT|INCORRECT" verif/lvs/MAC4.lvs.report</code></td></tr>
+</table><ul><li>どちらも先に <code>make pnr</code>。DRC は1分ほどです。</li><li>DRC の結果は、ルール名ごとの違反数を読みます。0 でないものを分類してください。</li></ul></section>
+<p>ツールは <strong>Siemens Calibre</strong> です。タイミングが通っても、<strong>製造できる形</strong>か、<strong>ネットリストどおりの回路</strong>かは別問題です。</p>
+<h2>DRC (Design Rule Check)</h2>
+<p>配線の幅・間隔・密度などの製造ルールを、GDS に対して検査します。</p>
+<figure class="code"><figcaption>verif/run_drc.csh</figcaption><pre><code>#!/bin/csh -f
+# Calibre DRC on the ICC2 GDS.  Run in verif/:  csh run_drc.csh
+source ../env.csh &gt;&amp; /dev/null
+mkdir -p drc; cd drc          # the deck writes many report files
+# Site hook: write MAC4.drc.deck = the foundry DRC deck pointed at ../../icc2/MAC4.gds, top cell MAC4,
+# results MAC4.drc.results, summary MAC4.drc.summary.  (Deck internals are site specific.)
+csh $COURSE_ROOT/config/prep_drc.csh
+calibre -drc -hier -turbo 4 -hyper MAC4.drc.deck &gt;&amp; drc.log
+# list failing rules, skipping the ones that only make sense for a full chip (DRC_IGNORE)
+grep -E &quot;RULECHECK .*Result Count&quot; MAC4.drc.summary | grep -v &quot;Count = 0 &quot; | grep -v &quot;RULECHECK $DRC_IGNORE&quot; | tee drc.nonzero.txt
+echo &quot;rules failing (excluding chip-level rules): `wc -l &lt; drc.nonzero.txt`&quot;</code></pre></figure>
+<table>
+<tr><th>見え方</th><th>意味</th></tr>
+<tr><td>ルールごとの違反数</td><td><code>*.drc.summary</code> の <code>RULECHECK ... Result Count</code>。0 でないものを読む。</td></tr>
+<tr><td><strong>チップ全体向けのルール</strong>（シールリング・境界）</td><td>単体ブロックでは必ず出る。フルチップで解消するため、ブロック段階では除外してよい。</td></tr>
+<tr><td><strong>ダミーパターン／密度ルール</strong></td><td>フィルを入れるフェーズで解消する。ブロック単体では残ることが多い。</td></tr>
+</table>
+<p>この教材では、実際の配線の幾何ルール違反は<strong>無し</strong>で、残るのは密度・ダミー・チップ全体向けのルールです（一覧は <code>verif/drc/drc.nonzero.txt</code>）。</p>
+<h2>LVS (Layout Versus Schematic)</h2>
+<p>レイアウトからトランジスタと接続を取り出し、ネットリスト（回路図側）と照合します。</p>
+<figure class="code"><figcaption>verif/run_lvs.csh</figcaption><pre><code>#!/bin/csh -f
+# Calibre LVS: layout (GDS) vs. the netlist written by ICC2.  Run in verif/:  csh run_lvs.csh
+source ../env.csh &gt;&amp; /dev/null
+mkdir -p lvs; cd lvs
+# Site hook: from ../../icc2/MAC4.icc2.lvs.v and MAC4.gds produce
+#   MAC4.src.sp   (SPICE source netlist)   and   MAC4.lvs.deck  (the foundry LVS deck, patched)
+csh $COURSE_ROOT/config/prep_lvs.csh
+calibre -lvs -hier -turbo 4 -hyper -spice MAC4.lvs.sp MAC4.lvs.deck &gt;&amp; lvs.log
+grep -E &quot;CORRECT|INCORRECT&quot; MAC4.lvs.report | head -3</code></pre></figure>
+<ol><li>ネットリストをトランジスタ単位の SPICE に変換（セルの中身はライブラリの SPICE から）。</li>
+<li>レイアウトを抽出し、<strong>デバイス数・ネット数・接続</strong>を照合。</li>
+<li>レポートの先頭の <code>CORRECT / INCORRECT</code>、続いて <code>INITIAL NUMBERS OF OBJECTS</code>（レイアウトとソースの個数の比較）を見る。</li></ol>
+<h3>レポートの読み方</h3>
+<table>
+<tr><th>見るところ</th><th>意味</th></tr>
+<tr><td><code>OVERALL COMPARISON RESULTS</code></td><td><code>CORRECT</code> が合格</td></tr>
+<tr><td><code>INITIAL NUMBERS OF OBJECTS</code></td><td>MOS トランジスタ数が一致しているか（デバイスは合っているのに接続が違う、など切り分けに使う）</td></tr>
+<tr><td><code>INCORRECT NETS</code> / <code>INCORRECT INSTANCES</code></td><td>どのネット・素子で食い違うか</td></tr>
+</table>
+<figure class="code"><pre><code>make lvs
+...  CORRECT   MAC4   MAC4</code></pre></figure>
+<h3>実例: LVS が落ちた原因は電源だった</h3>
+<p>このコースを作る途中で、LVS が <code>INCORRECT</code> になりました。調べ方は次のとおりです。</p>
+<ol>
+<li><code>INITIAL NUMBERS OF OBJECTS</code> を見ると、トランジスタ数は<strong>一致</strong>。部品は合っているので、接続の問題。</li>
+<li>標準セル1個だけで LVS を実行すると <code>CORRECT</code>。セルの中は正しい。</li>
+<li><code>INCORRECT INSTANCES</code> の中身を読むと、トランジスタの基板側（<code>b:</code>）が、回路図では <code>VDD</code>/<code>VSS</code> なのに、レイアウトでは名前のない別のネットになっている。</li>
+<li>電源の配線データを調べると、<strong>標準セルの電源レールが、上位の電源ストラップにビアでつながっていないものがあった</strong>（ビアが設計ルールに引っかかって消えていた）。</li>
+<li>ストラップを縦方向だけにし、ビアの形を選び直して再実行 → LVS <code>CORRECT</code>、DRC もルール違反なし。</li>
+</ol>
+<aside class="note tip"><strong>学べること</strong><div>電源が切れていても、タイミング解析（理想的な電源を仮定）と DRC は通ってしまいます。<strong>LVS だけが、配線のつながりを本当に確認する</strong>検査です。</div></aside>
+<aside class="note tip"><strong>ブロック単体とフルチップの違い</strong><div>電源ピン・シールリング・IOなどがない単体ブロックでは、DRC/LVS 共に特有の違反・不一致が出ます。何がブロック単体の都合で、何が実際の問題かを区別するのが物理検証の腕の見せ所です。</div></aside>
+<h2>演習</h2>
+<ol><li><code>drc.nonzero.txt</code> に並ぶルールを、「配線の幾何」「密度・ダミー」「チップ全体」の3つに分類する。</li>
+<li><code>icc2/icc2.tcl</code> のビア指定を一時的にこわして（例: ストラップの層を変える）再実行し、LVS がどう落ちるか、レポートの <code>INCORRECT NETS</code> を読む。</li></ol>
+
+<div class="pager"><a href="08-gls.html"><span>← 前へ</span>08 ゲートレベルシミュレーション</a><a href="10-pitfalls.html" style="text-align:right"><span>次へ →</span>10 チェックリストとつまずき集</a></div>
+<footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>
