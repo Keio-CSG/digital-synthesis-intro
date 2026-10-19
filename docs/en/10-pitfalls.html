@@ -10,10 +10,21 @@
   gtag('config', 'G-R6BS853MB3');
 </script>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+/* Open the language the visitor chose with the tabs; on a first visit use the browser language. */
+(function () { try {
+  var want = localStorage.getItem("lang");
+  if (!want) {
+    var l = (navigator.languages && navigator.languages[0]) || navigator.language || "en";
+    want = /^ja/i.test(l) ? "ja" : "en";
+  }
+  if (want === "ja") location.replace("../10-pitfalls.html");
+} catch (e) {} })();
+</script>
 <title>10 Checklist and Common Pitfalls | Digital Logic Synthesis</title><meta name="description" content="What to check before signoff, and common failures.">
 <link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
-<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html" class=cur>10 Checklist and Common Pitfalls</a><p class="lang"><a href="../10-pitfalls.html" hreflang="ja">日本語</a></p></nav>
-<main><h1>10 Checklist and Common Pitfalls</h1><p class="summary">What to check before signoff, and common failures.</p>
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html" class=cur>10 Checklist and Common Pitfalls</a></nav>
+<main><div class="langtabs" role="group" aria-label="言語 / Language"><a href="../10-pitfalls.html" hreflang="ja" lang="ja" onclick="try{localStorage.setItem('lang','ja')}catch(e){}">日本語</a><a href="10-pitfalls.html" aria-current="true" onclick="try{localStorage.setItem('lang','en')}catch(e){}">English</a></div><h1>10 Checklist and Common Pitfalls</h1><p class="summary">What to check before signoff, and common failures.</p>
 <h2>Checklist before signoff</h2>
 <ul class="check">
 <li>RTL simulation PASS (the test is self-checking every time)</li>

@@ -10,10 +10,21 @@
   gtag('config', 'G-R6BS853MB3');
 </script>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+/* Open the language the visitor chose with the tabs; on a first visit use the browser language. */
+(function () { try {
+  var want = localStorage.getItem("lang");
+  if (!want) {
+    var l = (navigator.languages && navigator.languages[0]) || navigator.language || "ja";
+    want = /^ja/i.test(l) ? "ja" : "en";
+  }
+  if (want === "en") location.replace("en/02-rtl-sim.html");
+} catch (e) {} })();
+</script>
 <title>02 RTLとシミュレーション｜デジタル論理合成入門</title><meta name="description" content="題材 MAC4 と、自己チェック付きテストベンチ。">
 <link rel="stylesheet" href="style.css"></head><body><div class="wrap">
-<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html" class=cur>02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a><p class="lang"><a href="en/02-rtl-sim.html" hreflang="en">English</a></p></nav>
-<main><h1>02 RTLとシミュレーション</h1><p class="summary">題材 MAC4 と、自己チェック付きテストベンチ。</p><section class="intro"><h2>はじめに: RTL とは、シミュレーションとは</h2>
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p><a href="index.html">デジタル論理合成入門</a><a href="01-setup.html">01 セットアップ</a><a href="02-rtl-sim.html" class=cur>02 RTLとシミュレーション</a><a href="03-synthesis.html">03 論理合成</a><a href="04-formal.html">04 等価性検証</a><a href="05-pnr.html">05 配置配線</a><a href="06-extraction.html">06 寄生抽出</a><a href="07-sta.html">07 signoff STA</a><a href="08-gls.html">08 ゲートレベルシミュレーション</a><a href="09-physical-verification.html">09 物理検証 (DRC / LVS)</a><a href="10-pitfalls.html">10 チェックリストとつまずき集</a></nav>
+<main><div class="langtabs" role="group" aria-label="言語 / Language"><a href="02-rtl-sim.html" aria-current="true" onclick="try{localStorage.setItem('lang','ja')}catch(e){}">日本語</a><a href="en/02-rtl-sim.html" hreflang="en" lang="en" onclick="try{localStorage.setItem('lang','en')}catch(e){}">English</a></div><h1>02 RTLとシミュレーション</h1><p class="summary">題材 MAC4 と、自己チェック付きテストベンチ。</p><section class="intro"><h2>はじめに: RTL とは、シミュレーションとは</h2>
 <p><strong>RTL</strong>（Register Transfer Level）は、回路を<strong>「レジスタ（値を覚える部品）」と「レジスタ間で行う計算」</strong>で書く抽象度のことです。「クロックが1回来るたびに、この値とこの値を足して、このレジスタに入れる」といった動作を、Verilog という言語で書きます。</p>
 <p>ソフトウェアのプログラムは上から順に実行されますが、<strong>ハードウェアの記述は「全部の部品が同時に動いている」</strong>様子を書いたものです。ここが最初に戸惑うところです。</p>
 <p><strong>クロック</strong>は一定の間隔で打たれる合図で、レジスタはクロックの立ち上がりの瞬間にだけ新しい値を取り込みます。デジタル回路はこの合図に合わせて、一歩ずつ進みます。</p>

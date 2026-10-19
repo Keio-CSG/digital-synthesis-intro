@@ -548,10 +548,21 @@ def render(i, slug, title, summary, body):
   gtag('config', 'G-R6BS853MB3');
 </script>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+/* Open the language the visitor chose with the tabs; on a first visit use the browser language. */
+(function () {{ try {{
+  var want = localStorage.getItem("lang");
+  if (!want) {{
+    var l = (navigator.languages && navigator.languages[0]) || navigator.language || "en";
+    want = /^ja/i.test(l) ? "ja" : "en";
+  }}
+  if (want === "ja") location.replace("../{slug}.html");
+}} catch (e) {{}} }})();
+</script>
 <title>{ttl}</title><meta name="description" content="{html.escape(summary)}">
 <link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
-<nav class="side"><p class="brand">{LABELS["brand"]}</p><p class="sub">{LABELS["sub"]}</p>{nav}<p class="lang"><a href="../{slug}.html" hreflang="ja">日本語</a></p></nav>
-<main><h1>{html.escape(title)}</h1><p class="summary">{html.escape(summary)}</p>{INTROS.get(slug,"")}{RUNS.get(slug,"")}{body}
+<nav class="side"><p class="brand">{LABELS["brand"]}</p><p class="sub">{LABELS["sub"]}</p>{nav}</nav>
+<main><div class="langtabs" role="group" aria-label="言語 / Language"><a href="../{slug}.html" hreflang="ja" lang="ja" onclick="try{{localStorage.setItem('lang','ja')}}catch(e){{}}">日本語</a><a href="{slug}.html" aria-current="true" onclick="try{{localStorage.setItem('lang','en')}}catch(e){{}}">English</a></div><h1>{html.escape(title)}</h1><p class="summary">{html.escape(summary)}</p>{INTROS.get(slug,"")}{RUNS.get(slug,"")}{body}
 <div class="pager">{prev}{nxt}</div>
 <footer>{LABELS["foot"]}</footer></main></div></body></html>"""
 

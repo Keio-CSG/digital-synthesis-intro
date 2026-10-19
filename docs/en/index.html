@@ -10,10 +10,21 @@
   gtag('config', 'G-R6BS853MB3');
 </script>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+/* Open the language the visitor chose with the tabs; on a first visit use the browser language. */
+(function () { try {
+  var want = localStorage.getItem("lang");
+  if (!want) {
+    var l = (navigator.languages && navigator.languages[0]) || navigator.language || "en";
+    want = /^ja/i.test(l) ? "ja" : "en";
+  }
+  if (want === "ja") location.replace("../index.html");
+} catch (e) {} })();
+</script>
 <title>Introduction to Digital Logic Synthesis</title><meta name="description" content="Go from RTL to signoff with a repository that really runs.">
 <link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
-<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html" class=cur>Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a><p class="lang"><a href="../index.html" hreflang="ja">日本語</a></p></nav>
-<main><h1>Introduction to Digital Logic Synthesis</h1><p class="summary">Go from RTL to signoff with a repository that really runs.</p><section class="intro"><h2>Background: how is a digital chip made?</h2>
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html" class=cur>Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a></nav>
+<main><div class="langtabs" role="group" aria-label="言語 / Language"><a href="../index.html" hreflang="ja" lang="ja" onclick="try{localStorage.setItem('lang','ja')}catch(e){}">日本語</a><a href="index.html" aria-current="true" onclick="try{localStorage.setItem('lang','en')}catch(e){}">English</a></div><h1>Introduction to Digital Logic Synthesis</h1><p class="summary">Go from RTL to signoff with a repository that really runs.</p><section class="intro"><h2>Background: how is a digital chip made?</h2>
 <p>The CPU in a phone is not drawn transistor by transistor. <strong>A designer first describes what the circuit should do in a text-like code (RTL)</strong>, and tools then convert it step by step into a drawing that a factory can manufacture (the layout).</p>
 <p>After each conversion we have to check that the result still matches the original design, is fast enough, and obeys the manufacturing rules. This checking is called <strong>signoff</strong>. Only when all of it passes can the layout data (GDS) be sent to the factory.</p>
 <p>On this site you run the whole flow yourself on one small circuit.</p></section>

@@ -10,10 +10,21 @@
   gtag('config', 'G-R6BS853MB3');
 </script>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+/* Open the language the visitor chose with the tabs; on a first visit use the browser language. */
+(function () { try {
+  var want = localStorage.getItem("lang");
+  if (!want) {
+    var l = (navigator.languages && navigator.languages[0]) || navigator.language || "en";
+    want = /^ja/i.test(l) ? "ja" : "en";
+  }
+  if (want === "ja") location.replace("../02-rtl-sim.html");
+} catch (e) {} })();
+</script>
 <title>02 RTL and Simulation | Digital Logic Synthesis</title><meta name="description" content="The example MAC4 and a self-checking testbench.">
 <link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
-<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html" class=cur>02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a><p class="lang"><a href="../02-rtl-sim.html" hreflang="ja">日本語</a></p></nav>
-<main><h1>02 RTL and Simulation</h1><p class="summary">The example MAC4 and a self-checking testbench.</p><section class="intro"><h2>Background: what are RTL and simulation?</h2>
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html" class=cur>02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a></nav>
+<main><div class="langtabs" role="group" aria-label="言語 / Language"><a href="../02-rtl-sim.html" hreflang="ja" lang="ja" onclick="try{localStorage.setItem('lang','ja')}catch(e){}">日本語</a><a href="02-rtl-sim.html" aria-current="true" onclick="try{localStorage.setItem('lang','en')}catch(e){}">English</a></div><h1>02 RTL and Simulation</h1><p class="summary">The example MAC4 and a self-checking testbench.</p><section class="intro"><h2>Background: what are RTL and simulation?</h2>
 <p><strong>RTL</strong> (Register Transfer Level) is a level of abstraction where a circuit is written as <strong>"registers (parts that remember a value) and the calculations between them"</strong>. You write things like "at every clock, add these two values and store the result in this register" in a language called Verilog.</p>
 <p>A software program runs from top to bottom, but <strong>a hardware description says "all the parts are working at the same time"</strong>. This is the first thing that confuses newcomers.</p>
 <p>The <strong>clock</strong> is a signal ticking at a fixed interval. A register takes in a new value only at the rising edge of the clock. A digital circuit advances one step at a time to this beat.</p>

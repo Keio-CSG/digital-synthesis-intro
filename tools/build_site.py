@@ -615,7 +615,7 @@ svg.flow text{fill:var(--fg);font-size:14px;text-anchor:middle}svg.flow text.s{f
 .pager a{text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:10px 14px;max-width:48%}.pager a span{display:block;font-size:12px;color:var(--muted)}
 section.intro{background:var(--accent-soft);border-radius:12px;padding:6px 22px 14px;margin:18px 0 26px}section.intro h2{border-top:0;margin-top:14px}
 section.run{border:1px solid var(--line);border-radius:12px;padding:4px 20px 14px;margin:18px 0 8px}section.run h2{border-top:0;margin-top:12px}section.run th{width:7.5em;white-space:nowrap}
-nav.side p.lang{margin:18px 10px 0;font-size:13px}nav.side p.lang a{display:inline;padding:0;color:var(--accent)}
+.langtabs{display:flex;justify-content:flex-end;margin:-14px 0 14px}.langtabs a{padding:5px 14px;border:1px solid var(--line);font-size:13px;text-decoration:none;color:var(--fg);background:var(--bg)}.langtabs a:first-child{border-radius:8px 0 0 8px}.langtabs a:last-child{border-radius:0 8px 8px 0;border-left:0}.langtabs a[aria-current]{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600}.langtabs a:not([aria-current]):hover{background:var(--accent-soft)}.langtabs a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 footer{margin-top:40px;color:var(--muted);font-size:13px}
 @media(max-width:820px){.wrap{display:block}nav.side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:24px 16px 60px}}
 """
@@ -636,10 +636,21 @@ def render(i, slug, title, summary, body):
   gtag('config', 'G-R6BS853MB3');
 </script>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+/* Open the language the visitor chose with the tabs; on a first visit use the browser language. */
+(function () {{ try {{
+  var want = localStorage.getItem("lang");
+  if (!want) {{
+    var l = (navigator.languages && navigator.languages[0]) || navigator.language || "ja";
+    want = /^ja/i.test(l) ? "ja" : "en";
+  }}
+  if (want === "en") location.replace("en/{slug}.html");
+}} catch (e) {{}} }})();
+</script>
 <title>{html.escape(title) if slug == "index" else html.escape(title) + "｜デジタル論理合成入門"}</title><meta name="description" content="{html.escape(summary)}">
 <link rel="stylesheet" href="style.css"></head><body><div class="wrap">
-<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p>{nav}<p class="lang"><a href="en/{slug}.html" hreflang="en">English</a></p></nav>
-<main><h1>{html.escape(title)}</h1><p class="summary">{html.escape(summary)}</p>{INTROS.get(slug,"")}{RUNS.get(slug,"")}{body}
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p>{nav}</nav>
+<main><div class="langtabs" role="group" aria-label="言語 / Language"><a href="{slug}.html" aria-current="true" onclick="try{{localStorage.setItem('lang','ja')}}catch(e){{}}">日本語</a><a href="en/{slug}.html" hreflang="en" lang="en" onclick="try{{localStorage.setItem('lang','en')}}catch(e){{}}">English</a></div><h1>{html.escape(title)}</h1><p class="summary">{html.escape(summary)}</p>{INTROS.get(slug,"")}{RUNS.get(slug,"")}{body}
 <div class="pager">{prev}{nxt}</div>
 <footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>"""
 
