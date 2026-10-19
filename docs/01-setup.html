@@ -48,8 +48,8 @@ Makefile  make all で全ステップ</code></pre></figure>
 <h2>手順</h2>
 <ol>
 <li>リポジトリを取得する（<code>git clone https://github.com/Keio-CSG/digital-synthesis-intro.git</code>）。</li>
-<li><strong>研究室のメンバーは、用意済みの config をコピーします。</strong>置き場所は<strong>指導教員か先輩に聞いてください</strong>（外部には公開していません）。教わったフォルダを指定して、次を実行します。
-<figure class="code"><pre><code>csh tools/setup_config.csh &lt;教わったフォルダ&gt;
+<li><strong>研究室のメンバーは、用意済みの config をコピーします。</strong>研究室のサーバでは、次の場所に置いてあります（開けない場合は指導教員か先輩に聞いてください）。
+<figure class="code"><pre><code>csh tools/setup_config.csh /home/ylab/yoshioka/digital-synthesis-intro-config
 make sim            # 動けば設定はOK</code></pre></figure>
 <code>config/</code> に必要な6ファイルがコピーされます。すでにファイルがある場合は、<code>.bak</code> に退避します。</li>
 <li><strong>それ以外の環境で使う人は</strong>、<code>config/</code> の <code>*.example.*</code> をコピーして、自分の環境の値で埋めます。
