@@ -17,6 +17,7 @@
 !sta/pt.tcl
 !verif/run_*.csh
 !tools/*.py
+!tools/*.csh
 !LICENSE
 !docs/*
 !docs/img/*.png

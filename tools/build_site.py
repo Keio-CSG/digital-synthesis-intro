@@ -130,8 +130,14 @@ Makefile  make all で全ステップ
 ''')}
 <h2>手順</h2>
 <ol>
-<li>リポジトリを取得する。</li>
-<li><code>config/</code> の <code>*.example.*</code> をコピーして、自分の環境の値で埋める。
+<li>リポジトリを取得する（<code>git clone https://github.com/Keio-CSG/digital-synthesis-intro.git</code>）。</li>
+<li><strong>研究室のメンバーは、用意済みの config をコピーします。</strong>置き場所は<strong>指導教員か先輩に聞いてください</strong>（外部には公開していません）。教わったフォルダを指定して、次を実行します。
+{snippet('''
+csh tools/setup_config.csh <教わったフォルダ>
+make sim            # 動けば設定はOK
+''')}
+<code>config/</code> に必要な6ファイルがコピーされます。すでにファイルがある場合は、<code>.bak</code> に退避します。</li>
+<li><strong>それ以外の環境で使う人は</strong>、<code>config/</code> の <code>*.example.*</code> をコピーして、自分の環境の値で埋めます。
 {snippet('''
 cp config/local.example.csh          config/local.csh           # ツールの読み込み・ライブラリのファイル位置
 cp config/tech.example.tcl           config/tech.tcl            # 金属層の名前・配線方向
