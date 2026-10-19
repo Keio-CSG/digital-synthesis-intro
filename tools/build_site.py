@@ -618,8 +618,18 @@ def render(i, slug, title, summary, body):
     prev = f'<a href="{PAGES[i-1][0]}.html"><span>← 前へ</span>{html.escape(PAGES[i-1][1])}</a>' if i > 0 else "<span></span>"
     nxt = f'<a href="{PAGES[i+1][0]}.html" style="text-align:right"><span>次へ →</span>{html.escape(PAGES[i+1][1])}</a>' if i < len(PAGES) - 1 else "<span></span>"
     return f"""<!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html.escape(title)}｜デジタル論理合成入門</title><meta name="description" content="{html.escape(summary)}">
+<html lang="ja"><head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-R6BS853MB3"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+
+  gtag('config', 'G-R6BS853MB3');
+</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{html.escape(title) if slug == "index" else html.escape(title) + "｜デジタル論理合成入門"}</title><meta name="description" content="{html.escape(summary)}">
 <link rel="stylesheet" href="style.css"></head><body><div class="wrap">
 <nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p>{nav}</nav>
 <main><h1>{html.escape(title)}</h1><p class="summary">{html.escape(summary)}</p>{INTROS.get(slug,"")}{RUNS.get(slug,"")}{body}
