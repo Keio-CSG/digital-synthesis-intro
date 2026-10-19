@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-R6BS853MB3"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-R6BS853MB3');
+</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>09 Physical Verification (DRC / LVS) | Digital Logic Synthesis</title><meta name="description" content="Does it follow the manufacturing rules, and does it match the netlist?">
+<link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html" class=cur>09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a><p class="lang"><a href="../09-physical-verification.html" hreflang="ja">日本語</a></p></nav>
+<main><h1>09 Physical Verification (DRC / LVS)</h1><p class="summary">Does it follow the manufacturing rules, and does it match the netlist?</p><section class="intro"><h2>Background: what are DRC and LVS?</h2>
+<p>The factory defines <strong>dimension rules that must be obeyed</strong> when making a chip (minimum wire width, minimum spacing and so on). <strong>DRC</strong> (Design Rule Check) checks, at the level of shapes, that the finished layout does not break these rules.</p>
+<p><strong>LVS</strong> (Layout Versus Schematic) extracts the transistors and connections from the layout shapes and compares them with the schematic (the netlist) to see <strong>whether they are the same circuit</strong>. It can find wrong connections and the like.</p>
+<p>Even with correct timing, a chip that breaks a manufacturing rule or has a wrong connection cannot be made. So physical verification is also part of signoff.</p></section><section class="run"><h2>How to run</h2>
+<table>
+<tr><th>Easiest</th><td><code>make drc   and   make lvs</code> (from the top of the repository)</td></tr>
+<tr><th>Directly</th><td><code>cd verif; csh run_drc.csh   and   csh run_lvs.csh</code></td></tr>
+<tr><th>Inputs</th><td><code>icc2/MAC4.gds</code>, <code>icc2/MAC4.icc2.lvs.v</code> (LVS only), the rule decks (set in config)</td></tr>
+<tr><th>Outputs</th><td><code>verif/drc/MAC4.drc.summary</code>, <code>verif/drc/drc.nonzero.txt</code> (rules with violations), <code>verif/lvs/MAC4.lvs.report</code></td></tr>
+<tr><th>Check success</th><td><code>cat verif/drc/drc.nonzero.txt  /  grep -E "CORRECT|INCORRECT" verif/lvs/MAC4.lvs.report</code></td></tr>
+</table><ul><li>Run <code>make pnr</code> first for both. DRC takes about a minute.</li><li>Read the DRC result as violations per rule name. Classify the ones that are not 0.</li></ul></section>
+<p>The tool is <strong>Siemens Calibre</strong>. Even if timing is met, <strong>whether it can be manufactured</strong> and <strong>whether it is the circuit of the netlist</strong> are separate questions.</p>
+<h2>DRC (Design Rule Check)</h2>
+<p>It checks the GDS against manufacturing rules such as minimum wire width, spacing and density.</p>
+<figure class="code"><figcaption>verif/run_drc.csh</figcaption><pre><code>#!/bin/csh -f
+# Calibre DRC on the ICC2 GDS.  Run in verif/:  csh run_drc.csh
+source ../env.csh &gt;&amp; /dev/null
+mkdir -p drc; cd drc          # the deck writes many report files
+# Site hook: write MAC4.drc.deck = the foundry DRC deck pointed at ../../icc2/MAC4.gds, top cell MAC4,
+# results MAC4.drc.results, summary MAC4.drc.summary.  (Deck internals are site specific.)
+csh $COURSE_ROOT/config/prep_drc.csh
+calibre -drc -hier -turbo 4 -hyper MAC4.drc.deck &gt;&amp; drc.log
+# list failing rules, skipping the ones that only make sense for a full chip (DRC_IGNORE)
+grep -E &quot;RULECHECK .*Result Count&quot; MAC4.drc.summary | grep -v &quot;Count = 0 &quot; | grep -v &quot;RULECHECK $DRC_IGNORE&quot; | tee drc.nonzero.txt
+echo &quot;rules failing (excluding chip-level rules): `wc -l &lt; drc.nonzero.txt`&quot;</code></pre></figure>
+<table>
+<tr><th>What you see</th><th>Meaning</th></tr>
+<tr><td>Violations per rule</td><td><code>RULECHECK ... Result Count</code> in <code>*.drc.summary</code>. Read the ones that are not 0.</td></tr>
+<tr><td><strong>Rules meant for the whole chip</strong> (seal ring, boundary)</td><td>Always appear for a stand-alone block. They are resolved at full-chip level, so they may be excluded at block level.</td></tr>
+<tr><td><strong>Dummy-pattern / density rules</strong></td><td>Resolved in the fill phase. They often remain on a stand-alone block.</td></tr>
+</table>
+<p>In this course there are <strong>no</strong> real geometric rule violations in the wiring; what remains are density, dummy and whole-chip rules (the list is in <code>verif/drc/drc.nonzero.txt</code>).</p>
+<h2>LVS (Layout Versus Schematic)</h2>
+<p>It extracts the transistors and connections from the layout and compares them with the netlist (the schematic side).</p>
+<figure class="code"><figcaption>verif/run_lvs.csh</figcaption><pre><code>#!/bin/csh -f
+# Calibre LVS: layout (GDS) vs. the netlist written by ICC2.  Run in verif/:  csh run_lvs.csh
+source ../env.csh &gt;&amp; /dev/null
+mkdir -p lvs; cd lvs
+# Site hook: from ../../icc2/MAC4.icc2.lvs.v and MAC4.gds produce
+#   MAC4.src.sp   (SPICE source netlist)   and   MAC4.lvs.deck  (the foundry LVS deck, patched)
+csh $COURSE_ROOT/config/prep_lvs.csh
+calibre -lvs -hier -turbo 4 -hyper -spice MAC4.lvs.sp MAC4.lvs.deck &gt;&amp; lvs.log
+grep -E &quot;CORRECT|INCORRECT&quot; MAC4.lvs.report | head -3</code></pre></figure>
+<ol><li>Convert the netlist to a transistor-level SPICE (the contents of the cells come from the library's SPICE).</li>
+<li>Extract the layout and compare <strong>device counts, net counts and connections</strong>.</li>
+<li>Read <code>CORRECT / INCORRECT</code> at the top of the report, then <code>INITIAL NUMBERS OF OBJECTS</code> (layout vs source counts).</li></ol>
+<h3>How to read the report</h3>
+<table>
+<tr><th>Where</th><th>Meaning</th></tr>
+<tr><td><code>OVERALL COMPARISON RESULTS</code></td><td><code>CORRECT</code> means pass</td></tr>
+<tr><td><code>INITIAL NUMBERS OF OBJECTS</code></td><td>Do the MOS transistor counts match? (used to separate "devices match but connections differ")</td></tr>
+<tr><td><code>INCORRECT NETS</code> / <code>INCORRECT INSTANCES</code></td><td>Which nets and devices disagree</td></tr>
+</table>
+<figure class="code"><pre><code>make lvs
+...  CORRECT   MAC4   MAC4</code></pre></figure>
+<h3>A real example: LVS failed because of power</h3>
+<p>While building this course, LVS became <code>INCORRECT</code>. This is how it was investigated.</p>
+<ol>
+<li><code>INITIAL NUMBERS OF OBJECTS</code> showed that the transistor counts <strong>matched</strong>. The parts are right, so it is a connection problem.</li>
+<li>LVS on a single standard cell gave <code>CORRECT</code>. The inside of the cell is fine.</li>
+<li>Reading <code>INCORRECT INSTANCES</code>: the bulk side of the transistors (<code>b:</code>) was <code>VDD</code>/<code>VSS</code> in the schematic but an unnamed separate net in the layout.</li>
+<li>Looking at the power wiring data: <strong>some standard-cell power rails were not connected to the upper power straps by vias</strong> (the vias had been deleted because they violated design rules).</li>
+<li>Using vertical straps only and choosing the via shape again, then re-running: LVS <code>CORRECT</code>, and DRC shows no rule violation.</li>
+</ol>
+<aside class="note tip"><strong>What you learn</strong><div>Even with a broken power connection, timing analysis (which assumes ideal power) and DRC pass. <strong>Only LVS really checks that the wires are connected.</strong></div></aside>
+<aside class="note tip"><strong>Block alone versus full chip</strong><div>A stand-alone block without power pins, seal ring or I/O produces its own violations and mismatches in both DRC and LVS. Telling apart what is just a result of being a block and what is a real problem is the skill of physical verification.</div></aside>
+<h2>Exercises</h2>
+<ol><li>Classify the rules in <code>drc.nonzero.txt</code> into "wiring geometry", "density / dummy" and "whole chip".</li>
+<li>Temporarily break the via specification in <code>icc2/icc2.tcl</code> (for example change the strap layer), run again, and read <code>INCORRECT NETS</code> to see how LVS fails.</li></ol>
+
+<div class="pager"><a href="08-gls.html"><span>← Previous</span>08 Gate-Level Simulation</a><a href="10-pitfalls.html" style="text-align:right"><span>Next →</span>10 Checklist and Common Pitfalls</a></div>
+<footer>The source code of this course is in the same repository. No environment-specific information (libraries, rule decks, tool locations) is included.</footer></main></div></body></html>

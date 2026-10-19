@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-R6BS853MB3"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-R6BS853MB3');
+</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>10 Checklist and Common Pitfalls | Digital Logic Synthesis</title><meta name="description" content="What to check before signoff, and common failures.">
+<link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html" class=cur>10 Checklist and Common Pitfalls</a><p class="lang"><a href="../10-pitfalls.html" hreflang="ja">日本語</a></p></nav>
+<main><h1>10 Checklist and Common Pitfalls</h1><p class="summary">What to check before signoff, and common failures.</p>
+<h2>Checklist before signoff</h2>
+<ul class="check">
+<li>RTL simulation PASS (the test is self-checking every time)</li>
+<li>Synthesis: no warnings in <code>check_design</code>, no setup violations</li>
+<li>Equivalence checking (after synthesis) PASS</li>
+<li>Place and route: 0 opens/shorts in <code>check_routes</code>, no hold violations after CTS</li>
+<li>Extraction has <code>Errors: 0</code>, and every net has parasitics in PrimeTime</li>
+<li>STA: no violations for setup (slow corner) and hold (fast corner), no warnings in <code>check_timing</code></li>
+<li>GLS: PASS with SDF</li>
+<li>DRC: no geometric rule violations (you can explain every exclusion)</li>
+<li>LVS: CORRECT (it also confirms that power reaches every cell)</li>
+</ul>
+<h2>Common pitfalls</h2>
+<table>
+<tr><th>Symptom</th><th>Cause</th><th>Remedy</th></tr>
+<tr><td>Command not found</td><td>The tool environment was not loaded</td><td>Check <code>config/local.csh</code></td></tr>
+<tr><td>The library cannot be opened and the tool crashes</td><td>The tool version does not match the version that created the library</td><td>Open the library with the version that created it (use the same version for the extraction tool)</td></tr>
+<tr><td>"Cell not found" in a verification tool after netlist output</td><td>Physical-only cells such as fillers are in the netlist</td><td>Exclude them when writing the verification netlist, or provide models</td></tr>
+<tr><td>Extraction says "layer not defined"</td><td>Names in the layer map do not match</td><td>Check the layer names of the layout and write them in the map</td></tr>
+<tr><td>GLS outputs are <code>x</code></td><td>Reset release overlaps the clock edge</td><td>Release reset at a different clock phase</td></tr>
+<tr><td>STA slack differs from ICC2</td><td>Different corner, RC or clock settings</td><td>Align them one by one and compare</td></tr>
+<tr><td>Only LVS fails (transistor counts match)</td><td>Power rails are not connected to the power grid</td><td>Check that the vias of the power grid reach every rail (<a href="05-pnr.html">chapter 05</a>, <a href="09-physical-verification.html">chapter 09</a>)</td></tr>
+<tr><td>Warning that ports are unplaced</td><td>Power ports were not created</td><td>If the signal pins are placed you can ignore it. For a full chip, define the power pins</td></tr>
+</table>
+<h2>Going further</h2>
+<ul><li>Clock gating, DFT (scan), power analysis, multi-corner multi-mode, ECO.</li>
+<li>As an exercise, add a <strong>pipeline stage</strong> to <code>MAC4_LANE</code>, shorten the period to 1.5 ns and run all steps again.</li></ul>
+
+<div class="pager"><a href="09-physical-verification.html"><span>← Previous</span>09 Physical Verification (DRC / LVS)</a><span></span></div>
+<footer>The source code of this course is in the same repository. No environment-specific information (libraries, rule decks, tool locations) is included.</footer></main></div></body></html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-R6BS853MB3"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-R6BS853MB3');
+</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>08 Gate-Level Simulation | Digital Logic Synthesis</title><meta name="description" content="Use the delay information (SDF) and run the test again with real delays.">
+<link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html" class=cur>08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a><p class="lang"><a href="../08-gls.html" hreflang="ja">日本語</a></p></nav>
+<main><h1>08 Gate-Level Simulation</h1><p class="summary">Use the delay information (SDF) and run the test again with real delays.</p><section class="intro"><h2>Background: what is gate-level simulation?</h2>
+<p>The simulation in chapter 02 used ideal RTL without delays. <strong>Gate-level simulation (GLS)</strong> takes the finished circuit (the netlist), adds the <strong>real delays of parts and wires</strong>, and runs the same test again.</p>
+<p>The delay information is in a file called <strong>SDF</strong>. STA asks "does every path make it in time?", while GLS asks "is the behaviour we tested correct with the delays?". If both pass, confidence is high.</p></section><section class="run"><h2>How to run</h2>
+<table>
+<tr><th>Easiest</th><td><code>make gls</code> (from the top of the repository)</td></tr>
+<tr><th>Directly</th><td><code>cd sim; csh run_gls.csh setup 2.0   (usage: csh run_gls.csh &lt;setup|hold&gt; &lt;period in ns&gt;)</code></td></tr>
+<tr><th>Inputs</th><td><code>icc2/MAC4.icc2.nopg.v</code>, <code>sta/MAC4.setup.sdf</code> or <code>MAC4.hold.sdf</code>, <code>tb/tb_MAC4.v</code>, the cell simulation models (set in config)</td></tr>
+<tr><th>Outputs</th><td><code>sim/gls_setup_2.0.log</code>, <code>sim/gls_hold_2.0.log</code> and so on</td></tr>
+<tr><th>Check success</th><td><code>grep -E "PASS|FAIL" sim/gls_setup_2.0.log   →   PASS: 400 cycles, no mismatch</code></td></tr>
+</table><ul><li>Run <code>make sta</code> first to produce the SDF.</li>
+<li>Argument 1 is <code>setup</code> (delays of the slow corner) or <code>hold</code> (fast corner); argument 2 is the clock period in ns. Example: <code>csh run_gls.csh hold 2.0</code>.</li>
+<li>The period is passed to the testbench as <code>+HALF</code> (half period).</li></ul></section>
+<p>STA looks at all paths but does not look at the logic. Gate-level simulation (GLS) checks that <strong>the behaviour you tested is correct with the delays included</strong>. You feel safe only when both agree.</p>
+<p>The simulator is <strong>Cadence Xcelium</strong> again (<code>xrun</code>).</p>
+<figure class="code"><figcaption>sim/run_gls.csh</figcaption><pre><code>#!/bin/csh -f
+# Gate-level simulation with the post-layout SDF from PrimeTime.
+#   csh run_gls.csh setup 2.0    slow-corner delays, clock period 2.0 ns
+#   csh run_gls.csh hold  2.0    fast-corner delays
+# Defaults: setup 10.0
+source ../env.csh &gt;&amp; /dev/null
+set mode = setup; set per = 10.0
+if ($#argv &gt;= 1) set mode = $argv[1]
+if ($#argv &gt;= 2) set per  = $argv[2]
+set half = `echo &quot;$per / 2&quot; | bc -l`
+rm -rf xcelium_gls.d
+# SDF command file: back-annotate the DUT with the chosen delays
+cat &gt; sdf_$mode.cmd &lt;&lt;CMD
+SDF_FILE = &quot;../sta/MAC4.$mode.sdf&quot;,
+SCOPE = tb_MAC4.dut,
+MTM_CONTROL = &quot;MAXIMUM&quot;,
+LOG_FILE = &quot;sdf_$mode.log&quot;;
+CMD
+xrun -64bit -timescale 1ns/1ps -access +r \
+     ../icc2/MAC4.icc2.nopg.v $STD_VERILOG ../tb/tb_MAC4.v \
+     -xmlibdirname xcelium_gls.d -sdf_cmd_file sdf_$mode.cmd +HALF=$half -l gls_${mode}_$per.log
+grep -E &quot;PASS|FAIL|MISMATCH|SDF.*(ERROR|WARN)&quot; gls_${mode}_$per.log | head -5</code></pre></figure>
+<ul><li><strong>Netlist</strong>: the one after place and route.</li>
+<li><strong>Simulation models of the cells</strong>: Verilog provided with the cell library.</li>
+<li><strong>SDF</strong>: the delay table of every cell and wire (written by PrimeTime). It is applied to the DUT scope with <code>-sdf_cmd_file</code>.</li>
+<li><strong>Testbench</strong>: the same as for RTL. Only the clock period is changed with <code>+HALF</code>.</li></ul>
+<figure class="code"><pre><code>make gls
+== setup 2.0 ns: PASS: 400 cycles, no mismatch
+== hold  2.0 ns: PASS: 400 cycles, no mismatch</code></pre></figure>
+<h2>Common symptoms</h2>
+<table>
+<tr><th>Symptom</th><th>Cause</th></tr>
+<tr><td>Outputs stay <code>x</code></td><td>Reset released too close to the clock edge (recovery/removal violation), or the wrong SDF scope.</td></tr>
+<tr><td>Mismatch when the period is shortened</td><td>A setup violation (real). Compare with the STA result.</td></tr>
+<tr><td>Many warnings when the SDF is applied</td><td>Hierarchy names do not match. Check <code>sdf_*.log</code>.</td></tr>
+</table>
+<aside class="note tip"><strong>Which SDF to use?</strong><div>Check setup with the SDF of the slow corner and hold with the SDF of the fast corner. Both should PASS.</div></aside>
+<h2>Exercises</h2>
+<ol><li>Shorten the period of <code>make gls</code> from 2.0 to 1.0 and watch PASS/FAIL.</li>
+<li>With the exercise of chapter 02 (releasing reset at <code>#23</code>), see how <code>x</code> appears.</li></ol>
+
+<div class="pager"><a href="07-sta.html"><span>← Previous</span>07 Signoff STA</a><a href="09-physical-verification.html" style="text-align:right"><span>Next →</span>09 Physical Verification (DRC / LVS)</a></div>
+<footer>The source code of this course is in the same repository. No environment-specific information (libraries, rule decks, tool locations) is included.</footer></main></div></body></html>

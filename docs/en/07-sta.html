@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-R6BS853MB3"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-R6BS853MB3');
+</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>07 Signoff STA | Digital Logic Synthesis</title><meta name="description" content="With the real wire parasitics, check setup and hold, each at its worst corner.">
+<link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html" class=cur>07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a><p class="lang"><a href="../07-sta.html" hreflang="ja">日本語</a></p></nav>
+<main><h1>07 Signoff STA</h1><p class="summary">With the real wire parasitics, check setup and hold, each at its worst corner.</p><section class="intro"><h2>Background: what are signoff STA, setup and hold?</h2>
+<p><strong>STA</strong> (static timing analysis) <strong>calculates, for every path in the circuit, "does it make it in time?"</strong> without running a simulation. You do not have to think up inputs, and nothing is missed.</p>
+<p>Data going from one register to another has to arrive <strong>within one clock cycle</strong>. There are two conditions to check.</p>
+<ul><li><strong>setup</strong>: has the data arrived <em>before</em> the next clock? Too late is bad.</li>
+<li><strong>hold</strong>: after the clock, does the data change <em>too early</em>? Too early is bad.</li></ul>
+<p><strong>slack</strong> is the margin: <strong>0 or more passes</strong>, negative is a violation. Signoff STA is the <strong>final judgement</strong> including the wire resistance and capacitance (SPEF).</p></section><section class="run"><h2>How to run</h2>
+<table>
+<tr><th>Easiest</th><td><code>make sta</code> (from the top of the repository)</td></tr>
+<tr><th>Directly</th><td><code>cd sta; env MODE=setup pt_shell -f pt.tcl   and   env MODE=hold pt_shell -f pt.tcl</code></td></tr>
+<tr><th>Inputs</th><td><code>icc2/MAC4.icc2.nopg.v</code>, <code>rcx/MAC4.spef</code>, <code>const/MAC4.sdc</code>, the cell timing library (set in config)</td></tr>
+<tr><th>Outputs</th><td><code>sta/setup.*.log</code>, <code>sta/hold.*.log</code>, <code>MAC4.setup.sdf</code>, <code>MAC4.hold.sdf</code> (delay files used in the next chapter's simulation)</td></tr>
+<tr><th>Check success</th><td><code>grep "slack (" sta/setup.max.log | head -1  /  grep "slack (" sta/hold.min.log | head -1   →   both slack (MET)</code></td></tr>
+</table><ul><li><code>make pnr rcx</code> must have been run.</li><li>It runs twice because setup and hold are checked separately, at different corners.</li></ul></section>
+<p>The tool is <strong>Synopsys PrimeTime</strong> (<code>pt_shell</code>). This is the <strong>final judgement</strong>. The timing in synthesis and ICC2 is only progress; whether you can tape out is decided by signoff static timing analysis.</p>
+<figure class="code"><figcaption>sta/pt.tcl</figcaption><pre><code># PrimeTime signoff STA.  Run in sta/:  env MODE=setup|hold pt_shell -f pt.tcl
+#   setup : slow corner (late data, early clock)    -&gt; can the logic finish in one cycle?
+#   hold  : fast corner (early data, late clock)    -&gt; does data change too soon after the edge?
+set mode [expr {[info exists env(MODE)] ? $env(MODE) : &quot;setup&quot;}]
+set db   [expr {$mode eq &quot;setup&quot; ? $env(STD_DB_WC) : $env(STD_DB_BC)}]
+set designname MAC4
+
+set link_path [list &quot;*&quot; $db]
+set target_library [list $db]
+read_verilog ../icc2/$designname.icc2.nopg.v
+current_design $designname
+link_design
+
+# same constraints as synthesis and P&amp;R
+source ../const/$designname.sdc
+
+# real wire RC from StarRC
+read_parasitics ../rcx/$designname.spef
+report_annotated_parasitics -check &gt; $mode.annotated.log
+
+# clock is now propagated through the real tree (DC/ICC2 pre-CTS used an ideal clock)
+set_propagated_clock [all_clocks]
+
+update_timing -full
+check_timing -verbose                         &gt; $mode.check_timing.log
+report_global_timing                          &gt; $mode.global.log
+report_constraint -all_violators              &gt; $mode.violators.log
+report_timing -delay_type max -max_paths 5 -slack_lesser_than 1000 -nosplit -input_pins &gt; $mode.max.log
+report_timing -delay_type min -max_paths 5 -slack_lesser_than 1000 -nosplit -input_pins &gt; $mode.min.log
+report_clock_timing -type skew -nosplit &gt; $mode.skew.log
+report_analysis_coverage                      &gt; $mode.coverage.log
+
+# write SDF for gate-level simulation
+write_sdf -significant_digits 4 $designname.$mode.sdf
+quit</code></pre></figure>
+<h2>Why run it twice?</h2>
+<table>
+<tr><th>Check</th><th>Worst when</th><th>Corner used</th></tr>
+<tr><td><strong>setup</strong> (is the data too late?)</td><td>data slow, clock early</td><td><strong>slow corner</strong> (low voltage, high temperature)</td></tr>
+<tr><td><strong>hold</strong> (is the data too early?)</td><td>data early, clock late</td><td><strong>fast corner</strong> (high voltage, low temperature)</td></tr>
+</table>
+<p>Even for the same circuit, delays change a lot with the operating condition. Run <code>MODE=setup</code> and <code>MODE=hold</code> separately.</p>
+<h2>Key points of the script</h2>
+<ul>
+<li><code>read_verilog</code> + <code>link_design</code>: the netlist written by ICC2.</li>
+<li><code>source const/MAC4.sdc</code>: <strong>the same SDC as synthesis</strong>. The constraints must not change along the way.</li>
+<li><code>read_parasitics</code>: read the SPEF.</li>
+<li><code>set_propagated_clock</code>: propagate the clock through its <strong>real paths</strong>.</li>
+<li><code>check_timing</code>: gaps in the constraints (inputs without delay, registers the clock does not reach). <strong>Even with good slack, you cannot trust the result if there are warnings here</strong>.</li></ul>
+<h2>Reading the result</h2>
+<figure class="code"><figcaption>Reference values for this course (corner stated)</figcaption><pre><code>setup (slow corner):  report_timing -delay_type max  → slack +0.05 ns  (MET)
+hold  (fast corner):  report_timing -delay_type min  → slack +0.01 ns  (MET)</code></pre></figure>
+<ul><li><code>*.max.log</code> / <code>*.min.log</code>: details of the worst paths (<code>-input_pins</code> shows the delay of every cell).</li>
+<li><code>*.violators.log</code>: list of violations. It should be empty.</li>
+<li><code>*.skew.log</code>: clock skew.</li>
+<li><code>*.annotated.log</code>: the share of nets that got parasitics.</li>
+<li><code>*.coverage.log</code>: how completely the paths were analysed.</li></ul>
+<aside class="note warn"><strong>A small hold slack is normal</strong><div>Hold does not depend on the period; slowing the clock does not help. The only fix is <strong>inserting delay cells</strong>. That is why ICC2 fixes it at the CTS stage.</div></aside>
+<h2>What to do on a violation</h2>
+<table>
+<tr><th>Violation</th><th>Remedy</th></tr>
+<tr><td>setup</td><td>Lengthen the period / make the logic shallower (pipelining) / use cells with stronger drive / place things closer</td></tr>
+<tr><td>hold</td><td>Insert delay cells / adjust the clock skew</td></tr>
+</table>
+<h2>Exercises</h2>
+<ol><li>Set <code>CLK_PERIOD</code> to 1.0 and run from scratch (<code>make clean all</code>). At which step does a negative slack first appear?</li>
+<li>Delete the <code>set_propagated_clock</code> line and compare the results. What changes, and why?</li></ol>
+
+<div class="pager"><a href="06-extraction.html"><span>← Previous</span>06 Parasitic Extraction</a><a href="08-gls.html" style="text-align:right"><span>Next →</span>08 Gate-Level Simulation</a></div>
+<footer>The source code of this course is in the same repository. No environment-specific information (libraries, rule decks, tool locations) is included.</footer></main></div></body></html>

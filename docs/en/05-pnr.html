@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-R6BS853MB3"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-R6BS853MB3');
+</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>05 Place and Route | Digital Logic Synthesis</title><meta name="description" content="From floorplan to clock tree synthesis, routing and GDS output.">
+<link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html" class=cur>05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a><p class="lang"><a href="../05-pnr.html" hreflang="ja">日本語</a></p></nav>
+<main><h1>05 Place and Route</h1><p class="summary">From floorplan to clock tree synthesis, routing and GDS output.</p><section class="intro"><h2>Background: what are place and route and a clock tree?</h2>
+<p>A netlist is a <strong>connection table</strong> saying which part connects to which; it has no position information. <strong>Place and route</strong> (P&amp;R) puts the parts on the chip and connects them with metal wires.</p>
+<ul><li><strong>Floorplan</strong>: decide the size of the chip (block) and the positions of the pins.</li>
+<li><strong>Power wiring</strong>: lay thick wires that bring electricity to every part.</li>
+<li><strong>Placement</strong>: put the parts down. Parts that are strongly connected are placed close, which shortens wires.</li>
+<li><strong>Clock tree synthesis (CTS)</strong>: build a tree of buffers that delivers the clock to all registers <strong>at almost the same time</strong>.</li>
+<li><strong>Routing</strong>: connect the parts with metal.</li></ul>
+<p>The longer a wire, the slower it is, so <strong>this is where the real speed first becomes visible</strong>. In the end, <strong>GDS</strong>, the drawing data to hand to the factory, is written out.</p></section><section class="run"><h2>How to run</h2>
+<table>
+<tr><th>Easiest</th><td><code>make pnr</code> (from the top of the repository)</td></tr>
+<tr><th>Directly</th><td><code>cd icc2; icc2_shell -f icc2.tcl >& icc2_run.log</code></td></tr>
+<tr><th>Inputs</th><td><code>dc/MAC4.net.v</code> (netlist), <code>const/MAC4.sdc</code>, technology and cell data (set in config)</td></tr>
+<tr><th>Outputs</th><td><code>icc2/MAC4.gds</code> (layout), <code>MAC4.icc2.nopg.v</code> and <code>MAC4.icc2.lvs.v</code> (netlists), <code>MAC4.icc2.sdf</code>, <code>MAC4.def</code>, reports</td></tr>
+<tr><th>Check success</th><td><code>grep -E "^Error" icc2/icc2_run.log   →   nothing printed is OK  /  grep "slack (" icc2/MAC4.cts.timing.log | head -1</code></td></tr>
+</table><ul><li>Run <code>make syn</code> first. It takes about one and a half to two minutes.</li>
+<li>To change the core size, edit <code>core_width</code> / <code>core_height</code> in <code>icc2/icc2.tcl</code>.</li>
+<li>Every run rebuilds <code>icc2/MAC4.ndm</code> (the old one is removed automatically).</li></ul></section>
+<p>The tool is <strong>Synopsys IC Compiler II</strong> (<code>icc2_shell</code>). It gives the netlist its <strong>real shape</strong>. Only with place and route do wire delay, the clock tree and the power grid appear.</p>
+<h2>Overview of the steps</h2>
+<ol>
+<li><strong>Create the library and read the netlist</strong> (<code>create_lib</code>, <code>read_verilog</code>, <code>link_block</code>)</li>
+<li><strong>RC models and scenario</strong>: parasitic models, and a scenario that reads the SDC (setup and hold are both analysed)</li>
+<li><strong>Floorplan</strong>: core size and pin placement (<code>initialize_floorplan</code>, <code>place_pins</code>)</li>
+<li><strong>Power grid</strong>: vertical power straps, the cell-row power rails and the vias between them (<code>create_pg_*</code>, <code>compile_pg</code>)</li>
+<li><strong>Placement</strong>: <code>place_opt</code> places the cells and optimises while watching timing</li>
+<li><strong>Clock tree synthesis + hold fixing</strong>: <code>clock_opt</code></li>
+<li><strong>Routing</strong>: <code>route_auto</code>, <code>route_opt</code>, <code>check_routes</code></li>
+<li><strong>Fillers</strong> fill the gaps</li>
+<li><strong>Output</strong>: netlists (for verification), GDS, DEF, SDF</li></ol>
+<h2>Floorplan</h2>
+<figure class="code"><figcaption>icc2/icc2.tcl</figcaption><pre><code># --- floorplan parameters -------------------------------------------------
+set core_width      65        ;# core width  [um]
+set core_height     54        ;# core height [um]  (multiple of the row height)
+set io2core_offset  1.0
+set power_width     0.5
+set power_offset    0.5
+set increment       10.0      ;# power mesh pitch [um]</code></pre></figure>
+<p>Rule of thumb: total cell area ÷ target utilisation (about 50% here) ≈ core area. Too small and it cannot be routed; too large and the wires get long.</p>
+<h2>Clock tree synthesis (CTS)</h2>
+<figure class="code"><figcaption>icc2/icc2.tcl</figcaption><pre><code># 8. Placement (+ pre-CTS optimization)
+# =============================================================================
+set_ignored_layers -max_routing_layer $LAYER_ROUTE_MAX
+set_app_options -name place.coarse.continue_on_missing_scandef -value true
+place_opt
+connect_pg_net -automatic
+save_block -as ${designname}/place_opt
+redirect -file ${designname}.pre_cts.timing.log { report_timing -delay_type max -max_paths 3 }
+
+# =============================================================================
+# 9. Clock tree synthesis + post-CTS optimization (setup and HOLD fixing)
+# =============================================================================
+clock_opt
+save_block -as ${designname}/clock_opt
+redirect -file ${designname}.cts.skew.log   { report_clock_qor -type summary }
+redirect -file ${designname}.cts.timing.log { report_timing -delay_type max -max_paths 3 }
+redirect -file ${designname}.cts.hold.log   { report_timing -delay_type min -max_paths 3 }</code></pre></figure>
+<p>At placement time <strong>the clock is ideal</strong> (it reaches every flip-flop at the same moment). <code>clock_opt</code> builds a tree of clock buffers and evens out the arrival times at the flip-flops (the <strong>skew</strong>). At the same time it fixes <strong>hold violations</strong>, where data arrives too early, by inserting delay cells.</p>
+<figure class="code"><figcaption>Clock QoR after CTS (shape of the output)</figcaption><pre><code>Clock   Sinks  Levels  Repeater  Latency  Skew
+clk       88      2         3      ~0.06   ~0.01      ← cts.skew.log (icc2/)</code></pre></figure>
+<aside class="note warn"><strong>With a tiny circuit, CTS does nothing</strong><div>With about 20 flip-flops the clock port can drive them all directly and no buffers are inserted. This course uses four lanes so that you can see a tree being built.</div></aside>
+<h2>Look at the result</h2>
+<p>So that you can check the result without a layout viewer, there is a script that draws pictures from the GDS and DEF (<code>tools/render_layout.py</code>, run <code>python3 tools/render_layout.py</code>).</p>
+<figure class="img"><img src="../img/placement.png" alt="Placement" loading="lazy"><figcaption>Placement: cells are coloured by the four lanes. Dark cells are flip-flops, red ones are clock buffers. Cells of the same lane are placed together.</figcaption></figure>
+<figure class="img"><img src="../img/clock_tree.png" alt="Clock tree" loading="lazy"><figcaption>Clock tree: red squares are clock buffers, blue lines are clock wires, black dots are the 88 flip-flops. One clock branches out and reaches them all.</figcaption></figure>
+<figure class="img"><img src="../img/power_grid.png" alt="Power grid" loading="lazy"><figcaption>Power grid: horizontal lines are the standard-cell power rails (lowest metal), thick vertical lines are the power straps on a top metal. Red is VDD, blue is VSS. They are connected by vias where they cross.</figcaption></figure>
+<figure class="img"><img src="../img/layout.png" alt="Final layout" loading="lazy"><figcaption>Final layout (GDS): cell outlines and the routing of each metal layer. This is the data handed to the factory.</figcaption></figure>
+<h2>What to look at in the reports</h2>
+<table>
+<tr><th>File</th><th>What to check</th></tr>
+<tr><td><code>MAC4.pre_cts.timing.log</code></td><td>Setup before CTS (clock ideal)</td></tr>
+<tr><td><code>MAC4.cts.timing.log</code></td><td>Setup after CTS (clock propagated). <strong>Wire delay is now included, so the slack shrinks</strong></td></tr>
+<tr><td><code>MAC4.cts.hold.log</code></td><td>Hold after CTS. <strong>Before fixing it tends to be negative</strong></td></tr>
+<tr><td><code>MAC4.cts.skew.log</code></td><td>Skew, latency and number of buffers</td></tr>
+<tr><td><code>MAC4.check_routes.log</code></td><td>DRC / opens / shorts of the routing (should be 0)</td></tr>
+</table>
+<aside class="note warn"><strong>Drawing power is not enough</strong><div>If the power rails are not connected to the upper power straps by vias, timing and DRC still pass, <a href='09-physical-verification.html'>but only LVS fails</a>. Right after building the power grid, check that vias were added to every rail (in this course we really tripped over exactly this).</div></aside>
+<aside class="note tip"><strong>ICC2 results are provisional</strong><div>The parasitic extraction inside ICC2 is simple. The final judgement is made in the following chapters with <strong>StarRC + PrimeTime</strong>.</div></aside>
+<h2>Exercises</h2>
+<ol><li>Widen <code>core_width</code> to 90 and run again. What happens to the wire length (Wire Length in <code>cts.skew.log</code>)?</li>
+<li>Compare the setup slack before and after CTS and explain why it changes.</li></ol>
+
+<div class="pager"><a href="04-formal.html"><span>← Previous</span>04 Equivalence Checking</a><a href="06-extraction.html" style="text-align:right"><span>Next →</span>06 Parasitic Extraction</a></div>
+<footer>The source code of this course is in the same repository. No environment-specific information (libraries, rule decks, tool locations) is included.</footer></main></div></body></html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en"><head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-R6BS853MB3"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-R6BS853MB3');
+</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>03 Logic Synthesis | Digital Logic Synthesis</title><meta name="description" content="Set the goal with SDC and convert to gates with DC.">
+<link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html">02 RTL and Simulation</a><a href="03-synthesis.html" class=cur>03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a><p class="lang"><a href="../03-synthesis.html" hreflang="ja">日本語</a></p></nav>
+<main><h1>03 Logic Synthesis</h1><p class="summary">Set the goal with SDC and convert to gates with DC.</p><section class="intro"><h2>Background: what are logic synthesis and constraints?</h2>
+<p>RTL says "what to do", but it does not correspond to real parts yet. <strong>Logic synthesis</strong> converts it into <strong>a connection table of basic parts (standard cells)</strong> such as AND, OR and flip-flops (1-bit memory). The result is called a <strong>netlist</strong>.</p>
+<p>The same RTL can become different circuits depending on the parts chosen. Faster means larger, smaller means slower (a trade-off). So <strong>a person gives "how fast should it be" as <em>constraints (SDC)</em></strong>, and the tool looks for the smallest circuit that meets them.</p>
+<p>The <strong>standard-cell library</strong> is a catalogue of the parts' shape, area and delay. The synthesis tool uses the delay values to calculate "will it make it in time?".</p></section><section class="run"><h2>How to run</h2>
+<table>
+<tr><th>Easiest</th><td><code>make syn</code> (from the top of the repository)</td></tr>
+<tr><th>Directly</th><td><code>cd dc; dc_shell -f dc.tcl >& dc_run.log</code></td></tr>
+<tr><th>Inputs</th><td><code>rtl/*.v</code>, <code>const/MAC4.sdc</code>, the cell timing library (set in config)</td></tr>
+<tr><th>Outputs</th><td><code>dc/MAC4.net.v</code> (netlist), <code>MAC4.ddc</code>, <code>MAC4.sdc</code>, <code>MAC4.sdf</code>, reports <code>MAC4.*.log</code></td></tr>
+<tr><th>Check success</th><td><code>grep slack dc/MAC4.max.timing.log | head -1   →   slack (MET)</code></td></tr>
+</table><ul><li>To try another period, edit <code>CLK_PERIOD</code> in <code>const/MAC4.sdc</code> and run <code>make syn</code> again.</li>
+<li>To change the corner, set the environment variable <code>CORNER</code> to wc / tc / bc and run directly (for example <code>cd dc; env CORNER=tc dc_shell -f dc.tcl</code>).</li>
+<li>If it stops midway, look for <code>Error</code> in <code>dc/dc_run.log</code>.</li></ul></section>
+<p>Logic synthesis turns RTL into a connection of gates that <strong>meets the constraints</strong>. <strong>The constraints (SDC) are the specification</strong>: the same RTL gives a different circuit under different constraints.</p>
+<h2>1. Constraints (SDC)</h2>
+<figure class="code"><figcaption>const/MAC4.sdc</figcaption><pre><code># SDC for MAC4 -- shared by DC, ICC2, PrimeTime. Units: ns / pF.
+set CLK_PERIOD 2.0
+
+create_clock -name clk -period $CLK_PERIOD [get_ports clk]
+set_clock_uncertainty -setup 0.15 [get_clocks clk]  ;# skew + jitter margin
+set_clock_uncertainty -hold  0.05 [get_clocks clk]
+set_clock_transition  0.1  [get_clocks clk]
+
+set in_ports [remove_from_collection [all_inputs] [get_ports {clk rst_n}]]
+set_input_delay  0.6 -clock clk $in_ports         ;# data arrives 0.6 ns after clk edge
+set_output_delay 0.6 -clock clk [all_outputs]     ;# next block needs 0.6 ns setup
+
+set_input_transition 0.1  $in_ports
+set_load             0.05 [all_outputs]
+
+# rst_n is asynchronous and de-asserted by the board: not timed against clk
+set_false_path -from [get_ports rst_n]</code></pre></figure>
+<table>
+<tr><th>Command</th><th>Meaning</th></tr>
+<tr><td><code>create_clock</code></td><td>Clock period = 2.0 ns (500 MHz). This is the target performance.</td></tr>
+<tr><td><code>set_clock_uncertainty</code></td><td>Margin for skew and jitter. Larger for setup, smaller for hold.</td></tr>
+<tr><td><code>set_input_delay / set_output_delay</code></td><td>Time used by the neighbouring blocks. The time left for an input/output path is the period minus the delay.</td></tr>
+<tr><td><code>set_input_transition / set_load</code></td><td>Slope of the input waveform and the load on the outputs.</td></tr>
+<tr><td><code>set_false_path -from rst_n</code></td><td>The asynchronous reset is not timed against the clock.</td></tr>
+</table>
+<h2>2. Flow of the synthesis script</h2>
+<figure class="code"><figcaption>dc/dc.tcl</figcaption><pre><code># 1. read RTL
+define_design_lib WORK -path ./WORK
+analyze -format verilog [list ../rtl/MAC4_LANE.v ../rtl/MAC4.v]
+elaborate $designname
+current_design $designname
+link
+check_design &gt; check_design.pre.log
+
+# 2. constraints
+source ../const/MAC4.sdc
+
+# 3. synthesize (compile_ultra maps, optimizes timing/area)
+set_svf $designname.svf
+compile_ultra -no_autoungroup</code></pre></figure>
+<ul>
+<li><code>analyze</code> → <code>elaborate</code> → <code>link</code>: read the RTL, connect the hierarchy and bind it to the cell library.</li>
+<li><code>check_design</code>: any unconnected pins or multiple drivers? <strong>Always read the warnings.</strong></li>
+<li><code>compile_ultra</code>: optimise the logic and map it to cells.</li>
+</ul>
+<aside class="note tip"><strong>Which corner do we synthesise at?</strong><div>The rule is: check setup (is it too slow?) at the <strong>slow corner</strong> and hold at the <strong>fast corner</strong>. This script switches with <code>CORNER=wc|tc|bc</code> (default: wc). When you quote a number, <strong>always state the corner</strong>.</div></aside>
+<h2>3. How to read the reports</h2>
+<figure class="code"><figcaption>How to read report_timing (schematic)</figcaption><pre><code>Startpoint: acc_reg_1_   (rising edge-triggered flip-flop clocked by clk)
+Endpoint:   acc_reg_9_
+  data arrival time          ← time from the clock start until the data reaches the endpoint
+  clock period               ← until the next clock
+  - clock uncertainty
+  - setup time               ← preparation time the flip-flop needs
+  data required time
+  slack (MET)  +0.xx         ← required − arrival. 0 or more is OK, negative is a violation</code></pre></figure>
+<ul><li><code>MAC4.max.timing.log</code>: the tightest setup paths</li><li><code>MAC4.min.timing.log</code>: hold paths</li><li><code>MAC4.area.log</code>: area.</li><li><code>MAC4.qor.log</code>: overall summary.</li></ul>
+<aside class="note warn"><strong>Timing at this stage is <em>ideal</em></strong><div>There is no wire delay and no clock tree yet. Even with margin after synthesis, the slack shrinks after place and route. The signoff in <a href='07-sta.html'>chapter 07</a> is the final judge.</div></aside>
+<h2>Exercises</h2>
+<ol><li>Set <code>CLK_PERIOD</code> to 1.5 and run <code>make syn</code>. Does the slack become negative? How does the area change?</li>
+<li>Compare <code>CORNER=tc</code> and <code>CORNER=wc</code> at the same period.</li>
+<li>Remove <code>set_false_path</code>. What changes (look at the endpoints in <code>report_timing</code>)?</li></ol>
+
+<div class="pager"><a href="02-rtl-sim.html"><span>← Previous</span>02 RTL and Simulation</a><a href="04-formal.html" style="text-align:right"><span>Next →</span>04 Equivalence Checking</a></div>
+<footer>The source code of this course is in the same repository. No environment-specific information (libraries, rule decks, tool locations) is included.</footer></main></div></body></html>

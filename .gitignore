@@ -21,4 +21,5 @@
 !LICENSE
 !docs/*
 !docs/img/*.png
+!docs/en/*
 !docs/.nojekyll

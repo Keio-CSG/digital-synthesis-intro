@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en"><head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-R6BS853MB3"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-R6BS853MB3');
+</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>02 RTL and Simulation | Digital Logic Synthesis</title><meta name="description" content="The example MAC4 and a self-checking testbench.">
+<link rel="stylesheet" href="../style.css"></head><body><div class="wrap">
+<nav class="side"><p class="brand">Introduction to Digital Logic Synthesis</p><p class="sub">From RTL to signoff</p><a href="index.html">Introduction to Digital Logic Synthesis</a><a href="01-setup.html">01 Setup</a><a href="02-rtl-sim.html" class=cur>02 RTL and Simulation</a><a href="03-synthesis.html">03 Logic Synthesis</a><a href="04-formal.html">04 Equivalence Checking</a><a href="05-pnr.html">05 Place and Route</a><a href="06-extraction.html">06 Parasitic Extraction</a><a href="07-sta.html">07 Signoff STA</a><a href="08-gls.html">08 Gate-Level Simulation</a><a href="09-physical-verification.html">09 Physical Verification (DRC / LVS)</a><a href="10-pitfalls.html">10 Checklist and Common Pitfalls</a><p class="lang"><a href="../02-rtl-sim.html" hreflang="ja">日本語</a></p></nav>
+<main><h1>02 RTL and Simulation</h1><p class="summary">The example MAC4 and a self-checking testbench.</p><section class="intro"><h2>Background: what are RTL and simulation?</h2>
+<p><strong>RTL</strong> (Register Transfer Level) is a level of abstraction where a circuit is written as <strong>"registers (parts that remember a value) and the calculations between them"</strong>. You write things like "at every clock, add these two values and store the result in this register" in a language called Verilog.</p>
+<p>A software program runs from top to bottom, but <strong>a hardware description says "all the parts are working at the same time"</strong>. This is the first thing that confuses newcomers.</p>
+<p>The <strong>clock</strong> is a signal ticking at a fixed interval. A register takes in a new value only at the rising edge of the clock. A digital circuit advances one step at a time to this beat.</p>
+<p><strong>Simulation</strong> reproduces the behaviour of the circuit on a computer. A <strong>testbench</strong> is a "circuit for testing" that feeds inputs to your circuit and checks the outputs. It does not go into the real chip.</p></section><section class="run"><h2>How to run</h2>
+<table>
+<tr><th>Easiest</th><td><code>make sim</code> (from the top of the repository)</td></tr>
+<tr><th>Directly</th><td><code>cd sim; csh run_rtl.csh</code></td></tr>
+<tr><th>Inputs</th><td><code>rtl/MAC4_LANE.v</code>, <code>rtl/MAC4.v</code>, <code>tb/tb_MAC4.v</code></td></tr>
+<tr><th>Outputs</th><td><code>sim/rtl.log</code> (run log), <code>sim/wave.vcd</code> (waveform data)</td></tr>
+<tr><th>Check success</th><td><code>grep PASS sim/rtl.log   →   PASS: 400 cycles, no mismatch</code></td></tr>
+</table><ul><li>To look at waveforms, open <code>wave.vcd</code> in a waveform viewer (you can see how each signal changes over time).</li>
+<li>After editing the RTL just run <code>make sim</code> again (it recompiles every time).</li>
+<li>What the script does: it gives the RTL and the testbench to <code>xrun</code> (the simulator). <code>-access +r</code> makes signals readable and <code>-define DUMP</code> writes the waveform.</li></ul></section>
+<h2>Example: four-lane multiply-accumulate (MAC4)</h2>
+<p>One lane <strong>multiplies two 4-bit numbers and adds the product to a 12-bit accumulator</strong>; its inputs are registered. Four lanes are placed side by side and share the clock and reset (about 90 flip-flops). It is small, yet <em>large enough to need a clock tree</em>.</p>
+
+<svg viewBox="0 0 940 420" role="img" aria-label="MAC4 architecture" class="arch">
+  <defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--muted)"/></marker></defs>
+  <!-- top level -->
+  <text x="10" y="18" class="h">MAC4 (top level)</text>
+  <rect x="10" y="28" width="300" height="372" rx="10" class="top"/>
+  <g class="lane"><rect x="40" y="52" width="190" height="62" rx="8"/><text x="135" y="78">lane 0</text><text x="135" y="98" class="s">a[3:0] × b[3:0] → acc[11:0]</text></g>
+  <g class="lane"><rect x="40" y="132" width="190" height="62" rx="8"/><text x="135" y="158">lane 1</text><text x="135" y="178" class="s">a[7:4] × b[7:4] → acc[23:12]</text></g>
+  <g class="lane"><rect x="40" y="212" width="190" height="62" rx="8"/><text x="135" y="238">lane 2</text><text x="135" y="258" class="s">a[11:8] × b[11:8] → acc[35:24]</text></g>
+  <g class="lane"><rect x="40" y="292" width="190" height="62" rx="8"/><text x="135" y="318">lane 3</text><text x="135" y="338" class="s">a[15:12] × b[15:12] → acc[47:36]</text></g>
+  <text x="160" y="366" class="s">Shared inputs: clk, rst_n, clr, en</text>
+  <text x="160" y="390" class="s">Every lane is the same circuit (MAC4_LANE)</text>
+  <!-- lane detail -->
+  <text x="350" y="18" class="h">Inside one lane (MAC4_LANE)</text>
+  <rect x="340" y="28" width="590" height="372" rx="10" class="top"/>
+  <g class="blk"><rect x="360" y="90" width="90" height="46" rx="6"/><text x="405" y="110">a_q</text><text x="405" y="126" class="s">4-bit register</text></g>
+  <g class="blk"><rect x="360" y="170" width="90" height="46" rx="6"/><text x="405" y="190">b_q</text><text x="405" y="206" class="s">4-bit register</text></g>
+  <g class="blk"><rect x="360" y="250" width="90" height="46" rx="6"/><text x="405" y="270">en_q, clr_q</text><text x="405" y="286" class="s">control registers</text></g>
+  <g class="calc"><rect x="500" y="115" width="100" height="72" rx="6"/><text x="550" y="146">multiply</text><text x="550" y="166" class="s">4 bit × 4 bit</text><text x="550" y="180" class="s">→ 8 bit</text></g>
+  <g class="calc"><rect x="650" y="115" width="90" height="72" rx="6"/><text x="695" y="146">add</text><text x="695" y="166" class="s">acc + product</text><text x="695" y="180" class="s">12 bit</text></g>
+  <g class="blk big"><rect x="785" y="115" width="125" height="72" rx="6"/><text x="847" y="144">acc</text><text x="847" y="164" class="s">12-bit register</text><text x="847" y="178" class="s">= output acc</text></g>
+  <path d="M450,113 H475 V135 H498 M450,193 H475 V167 H498 M600,151 H648 M740,151 H783" class="arr"/>
+  <path d="M847,187 V235 H695 V189" class="arr fb"/>
+  <text x="770" y="253" class="s">add to the previous value (feedback)</text>
+  <path d="M450,273 H700 V290 H847 V189" class="arr ctl"/>
+  <text x="560" y="312" class="s">clr_q = 1 resets to zero / update only when en_q = 1</text>
+  <text x="360" y="62" class="s l">inputs a, b, en, clr (captured one clock later)</text>
+  <text x="360" y="376" class="s l">All registers run on the same clock clk. rst_n (asynchronous reset) clears them to 0.</text>
+</svg>
+
+<p>The left side is the top level with four lanes; the right side is the inside of one lane. Data flows <strong>input registers → multiply → add → accumulator</strong>, and the accumulator value is fed back into the next cycle's addition.</p>
+<figure class="code"><figcaption>rtl/MAC4_LANE.v</figcaption><pre><code>// 4x4 unsigned multiply-accumulate with registered inputs.
+//   stage 1: a_q,b_q &lt;= a,b           (input registers)
+//   stage 2: acc     &lt;= acc + a_q*b_q (accumulate, when en_q=1)
+// clr (synchronous) restarts the accumulation.
+module MAC4_LANE (
+    input            clk,
+    input            rst_n,   // asynchronous, active low
+    input            clr,
+    input            en,
+    input      [3:0] a,
+    input      [3:0] b,
+    output reg [11:0] acc
+);
+    reg [3:0] a_q, b_q;
+    reg       en_q, clr_q;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            a_q &lt;= 4&#x27;d0; b_q &lt;= 4&#x27;d0; en_q &lt;= 1&#x27;b0; clr_q &lt;= 1&#x27;b0;
+        end else begin
+            a_q &lt;= a; b_q &lt;= b; en_q &lt;= en; clr_q &lt;= clr;
+        end
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)      acc &lt;= 12&#x27;d0;
+        else if (clr_q)  acc &lt;= 12&#x27;d0;
+        else if (en_q)   acc &lt;= acc + a_q * b_q;
+    end
+endmodule</code></pre></figure>
+<figure class="code"><figcaption>rtl/MAC4.v</figcaption><pre><code>// Four independent MAC4_LANE units sharing clock, reset and control.
+//   lane k multiplies a[4k+3:4k] * b[4k+3:4k] and accumulates into acc[12k+11:12k].
+// Four lanes (about 90 flip-flops) give the clock tree something to balance.
+module MAC4 (
+    input             clk,
+    input             rst_n,
+    input             clr,
+    input             en,
+    input      [15:0] a,
+    input      [15:0] b,
+    output     [47:0] acc
+);
+    genvar k;
+    generate
+        for (k = 0; k &lt; 4; k = k + 1) begin : lane
+            MAC4_LANE u (.clk(clk), .rst_n(rst_n), .clr(clr), .en(en),
+                         .a(a[4*k +: 4]), .b(b[4*k +: 4]), .acc(acc[12*k +: 12]));
+        end
+    endgenerate
+endmodule</code></pre></figure>
+<h2>Testbench</h2>
+<p>Random inputs go to the DUT and to a <strong>behavioural model</strong> at the same time, and the outputs are compared every cycle. A PASS/FAIL result without looking at waveforms is important. The same testbench is reused for the gate-level simulation later.</p>
+<figure class="code"><figcaption>tb/tb_MAC4.v</figcaption><pre><code>    // reference model of the 4 lanes, same 2-cycle latency
+    reg [15:0] ma, mb; reg men, mclr; reg [47:0] macc;
+    integer k;
+    always @(posedge clk) begin
+        for (k = 0; k &lt; 4; k = k + 1)
+            if (mclr)     macc[12*k +: 12] &lt;= 0;
+            else if (men) macc[12*k +: 12] &lt;= macc[12*k +: 12] + ma[4*k +: 4] * mb[4*k +: 4];
+        ma &lt;= a; mb &lt;= b; men &lt;= en; mclr &lt;= clr;
+    end
+
+    integer i, errors = 0;
+    initial begin
+        ma=0; mb=0; men=0; mclr=0; macc=0;
+        #20 @(negedge clk) rst_n = 1;   // release reset away from the clock edge (recovery time)
+        for (i = 0; i &lt; 400; i = i + 1) begin
+            @(negedge clk);
+            a = $random; b = $random; en = ($random % 4) != 0; clr = ($random % 32) == 0;
+            @(posedge clk); #(half*1.9);   // sample just before the next edge (output settled)
+            if (i &gt; 3 &amp;&amp; acc !== macc) begin
+                errors = errors + 1;
+                $display(&quot;MISMATCH t=%0t acc=%0h expected=%0h&quot;, $time, acc, macc);
+            end
+        end
+        if (errors == 0) $display(&quot;PASS: 400 cycles, no mismatch&quot;);
+        else             $display(&quot;FAIL: %0d mismatches&quot;, errors);
+        $finish;
+    end</code></pre></figure>
+<figure class="code"><figcaption>Run and expected output</figcaption><pre><code>cd sim &amp;&amp; csh run_rtl.csh
+# ...
+PASS: 400 cycles, no mismatch</code></pre></figure>
+<aside class="note warn"><strong>Pitfall: when reset is released</strong><div>If reset is released <strong>exactly on a clock edge</strong>, the gate-level model reports a recovery violation and the outputs become <code>X</code> (RTL does not show this). The testbench releases reset at <code>@(negedge clk)</code>.</div></aside>
+<h2>Exercises</h2>
+<ol><li>Change the accumulate in <code>MAC4_LANE.v</code> from <code>acc + a_q*b_q</code> to <code>acc + a_q+b_q</code> and confirm the test FAILs.</li>
+<li>After <a href="08-gls.html">chapter 08</a>, change the reset release back to <code>#23 rst_n = 1;</code> and see what happens.</li></ol>
+
+<div class="pager"><a href="01-setup.html"><span>← Previous</span>01 Setup</a><a href="03-synthesis.html" style="text-align:right"><span>Next →</span>03 Logic Synthesis</a></div>
+<footer>The source code of this course is in the same repository. No environment-specific information (libraries, rule decks, tool locations) is included.</footer></main></div></body></html>

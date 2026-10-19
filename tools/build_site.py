@@ -615,6 +615,7 @@ svg.flow text{fill:var(--fg);font-size:14px;text-anchor:middle}svg.flow text.s{f
 .pager a{text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:10px 14px;max-width:48%}.pager a span{display:block;font-size:12px;color:var(--muted)}
 section.intro{background:var(--accent-soft);border-radius:12px;padding:6px 22px 14px;margin:18px 0 26px}section.intro h2{border-top:0;margin-top:14px}
 section.run{border:1px solid var(--line);border-radius:12px;padding:4px 20px 14px;margin:18px 0 8px}section.run h2{border-top:0;margin-top:12px}section.run th{width:7.5em;white-space:nowrap}
+nav.side p.lang{margin:18px 10px 0;font-size:13px}nav.side p.lang a{display:inline;padding:0;color:var(--accent)}
 footer{margin-top:40px;color:var(--muted);font-size:13px}
 @media(max-width:820px){.wrap{display:block}nav.side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:24px 16px 60px}}
 """
@@ -637,13 +638,14 @@ def render(i, slug, title, summary, body):
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title) if slug == "index" else html.escape(title) + "｜デジタル論理合成入門"}</title><meta name="description" content="{html.escape(summary)}">
 <link rel="stylesheet" href="style.css"></head><body><div class="wrap">
-<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p>{nav}</nav>
+<nav class="side"><p class="brand">デジタル論理合成入門</p><p class="sub">RTL から signoff まで</p>{nav}<p class="lang"><a href="en/{slug}.html" hreflang="en">English</a></p></nav>
 <main><h1>{html.escape(title)}</h1><p class="summary">{html.escape(summary)}</p>{INTROS.get(slug,"")}{RUNS.get(slug,"")}{body}
 <div class="pager">{prev}{nxt}</div>
 <footer>教材のソースコードは同じリポジトリにあります。環境依存の情報（ライブラリ・ルールデック・ツールの場所）は含まれていません。</footer></main></div></body></html>"""
 
-(OUT / "style.css").write_text(CSS)
-(OUT / ".nojekyll").write_text("")
-for i, (slug, title, summary, body) in enumerate(PAGES):
-    (OUT / f"{slug}.html").write_text(render(i, slug, title, summary, body))
-print(f"wrote {len(PAGES)} pages to docs/")
+if __name__ == "__main__":
+    (OUT / "style.css").write_text(CSS)
+    (OUT / ".nojekyll").write_text("")
+    for i, (slug, title, summary, body) in enumerate(PAGES):
+        (OUT / f"{slug}.html").write_text(render(i, slug, title, summary, body))
+    print(f"wrote {len(PAGES)} pages to docs/")
